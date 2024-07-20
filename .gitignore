@@ -1,0 +1,6 @@
+infra/env1.tfvars
+.terraform
+.terraform.lock.hcl
+.infracost
+.vscode
+nodejs
