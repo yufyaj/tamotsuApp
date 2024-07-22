@@ -177,12 +177,28 @@ resource "aws_cognito_user_pool" "tamotsu_user_pool" {
     # ユーザーに自己サインアップを許可する。
     allow_admin_create_user_only = false
   }
+
+  # カスタムフィールドの設定
+  schema {
+    name                = "verificationCode"
+    attribute_data_type = "String"
+    mutable             = true
+    required            = false
+
+    string_attribute_constraints {
+      min_length = 1
+      max_length = 256
+    }
+  }
 }
 
 # Cognito User Pool Clientの作成
 resource "aws_cognito_user_pool_client" "client" {
   name         = "tamotsu-user-pool-client"
   user_pool_id = aws_cognito_user_pool.tamotsu_user_pool.id
+
+  # USER_PASSWORD_AUTH フローを有効にする
+  explicit_auth_flows = ["ALLOW_USER_PASSWORD_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
 }
 
 # DynamoDBテーブルの作成
@@ -242,6 +258,7 @@ resource "aws_api_gateway_resource" "user_resource" {
   rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
   parent_id   = aws_api_gateway_rest_api.tamotsu_api.root_resource_id
   path_part   = "user"
+  depends_on  = [aws_api_gateway_rest_api.tamotsu_api]
 }
 
 # /register リソースの作成 (apiリソースの子)
@@ -258,6 +275,13 @@ resource "aws_api_gateway_resource" "login" {
   path_part   = "login"
 }
 
+# /user/confirm リソースの作成
+resource "aws_api_gateway_resource" "confirm" {
+  rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
+  parent_id   = aws_api_gateway_resource.user_resource.id
+  path_part   = "confirm"
+}
+
 # /register リソースの POST メソッドの作成
 resource "aws_api_gateway_method" "register_post" {
   rest_api_id   = aws_api_gateway_rest_api.tamotsu_api.id
@@ -271,6 +295,14 @@ resource "aws_api_gateway_method" "login_post" {
   rest_api_id   = aws_api_gateway_rest_api.tamotsu_api.id
   resource_id   = aws_api_gateway_resource.login.id
   http_method   = "POST"
+  authorization = "NONE"
+}
+
+# /user/confirm リソースの GET メソッドの作成
+resource "aws_api_gateway_method" "confirm_get" {
+  rest_api_id   = aws_api_gateway_rest_api.tamotsu_api.id
+  resource_id   = aws_api_gateway_resource.confirm.id
+  http_method   = "GET"
   authorization = "NONE"
 }
 
@@ -294,6 +326,17 @@ resource "aws_api_gateway_integration" "login_integration" {
   uri                     = aws_lambda_function.login_function.invoke_arn
 }
 
+# /user/confirm メソッドと Lambda 関数の連携
+resource "aws_api_gateway_integration" "confirm_integration" {
+  rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
+  resource_id = aws_api_gateway_resource.confirm.id
+  http_method = aws_api_gateway_method.confirm_get.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.confirm_function.invoke_arn
+}
+
 # Lambdaレイヤーの取得
 data "aws_lambda_layer_version" "aws_sdk_layer" {
   layer_name          = "aws-sdk-layer"
@@ -303,7 +346,7 @@ data "aws_lambda_layer_version" "aws_sdk_layer" {
 # Lambda関数 (register)
 resource "aws_lambda_function" "register_function" {
   function_name = "tamotsu-register-function"
-  filename      = "register.zip"
+  filename      = "../api/user/register/register.zip"
   handler       = "register.handler"
   runtime       = "nodejs20.x"
   role          = aws_iam_role.lambda_role.arn
@@ -324,7 +367,7 @@ resource "aws_lambda_function" "register_function" {
 # Lambda関数 (login)
 resource "aws_lambda_function" "login_function" {
   function_name = "tamotsu-login-function"
-  filename      = "login.zip"       # ログイン用 Lambda 関数のコード (login.js) を含む zip ファイル
+  filename      = "../api/user/login/login.zip"       # ログイン用 Lambda 関数のコード (login.js) を含む zip ファイル
   handler       = "login.handler"
   runtime       = "nodejs20.x"
   role          = aws_iam_role.lambda_role.arn
@@ -338,6 +381,29 @@ resource "aws_lambda_function" "login_function" {
       COGNITO_USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.client.id
     }
   }
+  layers = [data.aws_lambda_layer_version.aws_sdk_layer.arn]
+}
+
+# Lambda関数 (confirm)
+resource "aws_lambda_function" "confirm_function" {
+  function_name = "tamotsu-confirm-function"
+  filename      = "../api/user/confirm/confirm.zip"
+  handler       = "confirm.handler"
+  runtime       = "nodejs20.x"
+  role          = aws_iam_role.lambda_role.arn
+  timeout       = 15
+
+  vpc_config {
+    subnet_ids         = [aws_subnet.private_subnet.id]
+    security_group_ids = [aws_security_group.lambda_sg.id]
+  }
+
+  environment {
+    variables = {
+      COGNITO_USER_POOL_ID = aws_cognito_user_pool.tamotsu_user_pool.id
+    }
+  }
+
   layers = [data.aws_lambda_layer_version.aws_sdk_layer.arn]
 }
 
@@ -366,11 +432,22 @@ resource "aws_lambda_permission" "apigw_login_lambda" {
   source_arn    = "${aws_api_gateway_rest_api.tamotsu_api.execution_arn}/*/${aws_api_gateway_method.login_post.http_method}${aws_api_gateway_resource.login.path}"
 }
 
+# Lambda 関数に API Gateway からのアクセスを許可 (confirm)
+resource "aws_lambda_permission" "apigw_confirm_lambda" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.confirm_function.function_name
+  principal     = "apigateway.amazonaws.com"
+
+  source_arn = "${aws_api_gateway_rest_api.tamotsu_api.execution_arn}/*/${aws_api_gateway_method.confirm_get.http_method}${aws_api_gateway_resource.confirm.path}"
+}
+
 # API Gateway のデプロイ
 resource "aws_api_gateway_deployment" "tamotsu_deployment" {
   depends_on = [
     aws_api_gateway_integration.register_integration,
-    aws_api_gateway_integration.login_integration
+    aws_api_gateway_integration.login_integration,
+    aws_api_gateway_integration.confirm_integration,
   ]
 
   rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
