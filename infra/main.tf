@@ -1,7 +1,7 @@
 # 前提
-# SESは手動で作成
+# SESは手動で作成(ドメイン, メールアドレス)
 # Route53のドメインも手動で設定(お名前.comと連携)
-# lambdaにsdkレイヤーを事前に定義(aws-sdk-layer ver.4)
+# lambdaにsdkレイヤーを事前に定義(aws-sdk-layer ver.1)
 
 # ==========================================================
 # 変数の設定
@@ -13,10 +13,10 @@ variable "my_domain" {
   default = "tamotsu-app.com"
 }
 variable "region" {
-  default = "ap-northeast-3"
+  default = "ap-northeast-1"
 }
 variable "availability_zone" {
-  default = "ap-northeast-3a"
+  default = "ap-northeast-1a"
 }
 variable "vpc_cidr_block" {
   default = "10.0.0.0/16"
@@ -25,7 +25,7 @@ variable "public_subnet_cidr_block" {
   default = "10.0.1.0/24"
 }
 variable "send_mail_address" {
-  default = "info@tamotsu-app.com"
+  default = "no-reply@tamotsu-app.com"
 }
 
 # AWSプロバイダーの設定
@@ -50,6 +50,16 @@ resource "aws_subnet" "public_subnet" {
   availability_zone = var.availability_zone
   tags = {
     Name = "tamotsu-public-subnet"
+  }
+}
+
+# プライベートサブネットの設定
+resource "aws_subnet" "private_subnet" {
+  vpc_id     = aws_vpc.tamotsu_vpc.id
+  cidr_block = "10.0.2.0/24"  # パブリックサブネットとは異なるCIDRブロックを使用
+  availability_zone = var.availability_zone
+  tags = {
+    Name = "tamotsu-private-subnet"
   }
 }
 
@@ -135,12 +145,17 @@ resource "aws_iam_role_policy_attachment" "cognito_access" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonCognitoPowerUser"
 }
 
+# SES IDを取得
+data "aws_ses_domain_identity" "tamotsu_domain" {
+  domain = var.my_domain
+}
+
 # Cognito User Poolの作成
 resource "aws_cognito_user_pool" "tamotsu_user_pool" {
   name = "tamotsu-user-pool"
 
   # メールアドレス検証を必須にする
-  auto_verified_attributes = ["email"]
+  auto_verified_attributes = []
 
   # パスワードポリシー
   password_policy {
@@ -149,6 +164,18 @@ resource "aws_cognito_user_pool" "tamotsu_user_pool" {
     require_numbers   = true
     require_symbols   = true
     require_uppercase = true
+  }
+
+  # メッセージング (SES)
+  email_configuration {
+    email_sending_account = "DEVELOPER"
+    from_email_address    = "TAMOTSU <no-reply@tamotsu-app.com>"
+    source_arn = data.aws_ses_domain_identity.tamotsu_domain.arn
+  }
+
+  admin_create_user_config {
+    # ユーザーに自己サインアップを許可する。
+    allow_admin_create_user_only = false
   }
 }
 
@@ -186,30 +213,48 @@ resource "aws_s3_bucket" "tamotsu_images" {
   bucket = "tamotsu-images"
 }
 
+# 証明書の作成
+resource "aws_acm_certificate" "tamotsu" {
+  domain_name       = "api.${var.my_domain}"
+  validation_method = "DNS"
+}
+
+# apiサブドメイン
+resource "aws_api_gateway_domain_name" "tamotsu_app" {
+  domain_name       = "api.${var.my_domain}"  # サブドメイン (例: api)
+  regional_certificate_arn = aws_acm_certificate.tamotsu.arn
+  endpoint_configuration {
+    types = ["REGIONAL"]
+  }
+}
+
 # API Gatewayの作成
 resource "aws_api_gateway_rest_api" "tamotsu_api" {
   name        = "tamotsu-api"
   description = "API Gateway for TAMOTSU"
+  endpoint_configuration {
+    types = ["REGIONAL"]
+  }
 }
 
-# API Gatewayリソースの作成 (/api)
-resource "aws_api_gateway_resource" "api_resource" {
+# /user リソースの作成 (APIゲートウェイの子)
+resource "aws_api_gateway_resource" "user_resource" {
   rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
   parent_id   = aws_api_gateway_rest_api.tamotsu_api.root_resource_id
-  path_part   = "api"
+  path_part   = "user"
 }
 
 # /register リソースの作成 (apiリソースの子)
 resource "aws_api_gateway_resource" "register" {
   rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
-  parent_id   = aws_api_gateway_resource.api_resource.id  # 親リソースを/apiに変更
+  parent_id   = aws_api_gateway_resource.user_resource.id  # 親リソースを/api/userに変更
   path_part   = "register"
 }
 
 # /login リソースの作成 (apiリソースの子)
 resource "aws_api_gateway_resource" "login" {
   rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
-  parent_id   = aws_api_gateway_resource.api_resource.id  # 親リソースを/apiに変更
+  parent_id   = aws_api_gateway_resource.user_resource.id  # 親リソースを/api/userに変更
   path_part   = "login"
 }
 
@@ -252,7 +297,7 @@ resource "aws_api_gateway_integration" "login_integration" {
 # Lambdaレイヤーの取得
 data "aws_lambda_layer_version" "aws_sdk_layer" {
   layer_name          = "aws-sdk-layer"
-  version             = 4
+  version             = 1
 }
 
 # Lambda関数 (register)
@@ -264,7 +309,7 @@ resource "aws_lambda_function" "register_function" {
   role          = aws_iam_role.lambda_role.arn
   timeout       = 15
   vpc_config {
-    subnet_ids         = [aws_subnet.public_subnet.id]
+    subnet_ids         = [aws_subnet.private_subnet.id]
     security_group_ids = [aws_security_group.lambda_sg.id]
   }
   environment {
@@ -285,7 +330,7 @@ resource "aws_lambda_function" "login_function" {
   role          = aws_iam_role.lambda_role.arn
   timeout       = 15
   vpc_config {
-    subnet_ids         = [aws_subnet.public_subnet.id]
+    subnet_ids         = [aws_subnet.private_subnet.id]
     security_group_ids = [aws_security_group.lambda_sg.id]
   }
   environment {
@@ -332,18 +377,11 @@ resource "aws_api_gateway_deployment" "tamotsu_deployment" {
   stage_name  = "dev"
 }
 
-# API Gateway ステージの作成
-resource "aws_api_gateway_stage" "tamotsu_stage" {
-  deployment_id = aws_api_gateway_deployment.tamotsu_deployment.id
-  rest_api_id   = aws_api_gateway_rest_api.tamotsu_api.id
-  stage_name    = "dev"
-}
-
 # API Gatewayのマッピングを作成
 resource "aws_api_gateway_base_path_mapping" "tamotsu_app" {
   api_id      = aws_api_gateway_rest_api.tamotsu_api.id
-  stage_name  = aws_api_gateway_stage.tamotsu_stage.stage_name
-  domain_name = var.my_domain # 手動で作成したカスタムドメイン名に変更
+  stage_name  = "dev"
+  domain_name = aws_api_gateway_domain_name.tamotsu_app.domain_name
 }
 
 # SESの設定
@@ -351,20 +389,63 @@ resource "aws_ses_configuration_set" "tamotsu_config" {
   name = "tamotsu-config-set"
 }
 
-resource "aws_ses_template" "confirmation_template" {
-  name    = "confirmation-template"
-  subject = "TAMOTSUアカウント登録確認"
-  html = <<EOF
-  <!DOCTYPE html>
-  <html>
-    <head>
-      <meta charset="UTF-8">
-    </head>
-    <body>
-      <p>TAMOTSUにご登録いただきありがとうございます。</p>
-      <p>以下のリンクをクリックして登録を完了してください。</p>
-      <p><a href="{{confirmation_url}}">登録確認</a></p>
-    </body>
-  </html>
-  EOF
+# CognitoへのVPCエンドポイントはサポートされていないらしい？
+# NATゲートウェイの作成
+resource "aws_eip" "nat_eip" {
+  domain = "vpc"
+}
+
+resource "aws_internet_gateway" "gw" {
+  vpc_id = aws_vpc.tamotsu_vpc.id
+
+  tags = {
+    Name = "tamotsu-igw"
+  }
+}
+
+# ルートテーブルの作成
+resource "aws_route_table" "public_route_table" {
+  vpc_id = aws_vpc.tamotsu_vpc.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.gw.id
+  }
+
+  tags = {
+    Name = "tamotsu-public-route-table"
+  }
+}
+
+# パブリックサブネットにルートテーブルを関連付ける
+resource "aws_route_table_association" "public_subnet_association" {
+  subnet_id      = aws_subnet.public_subnet.id
+  route_table_id = aws_route_table.public_route_table.id
+}
+
+resource "aws_nat_gateway" "nat_gateway" {
+  allocation_id = aws_eip.nat_eip.id
+  subnet_id     = aws_subnet.public_subnet.id
+  tags = {
+    Name = "tamotsu-nat-gateway"
+  }
+}
+
+# ルートテーブルの修正
+resource "aws_route_table" "private_route_table" {
+  vpc_id = aws_vpc.tamotsu_vpc.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat_gateway.id
+  }
+
+  tags = {
+    Name = "tamotsu-private-route-table"
+  }
+}
+
+resource "aws_route_table_association" "private_route_assoc" {
+  subnet_id      = aws_subnet.private_subnet.id
+  route_table_id = aws_route_table.private_route_table.id
 }
