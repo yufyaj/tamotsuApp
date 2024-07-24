@@ -244,6 +244,24 @@ resource "aws_api_gateway_domain_name" "tamotsu_app" {
   }
 }
 
+# Route 53のホストゾーンを取得（既存のホストゾーンを使用する場合）
+data "aws_route53_zone" "tamotsu_app" {
+  name = "tamotsu-app.com"
+}
+
+# Route 53にAレコードを追加
+resource "aws_route53_record" "record_tamotsu_app" {
+  zone_id = data.aws_route53_zone.tamotsu_app.zone_id
+  name    = "api.tamotsu-app.com"
+  type    = "A"
+
+  alias {
+    name                   = aws_api_gateway_domain_name.tamotsu_app.regional_domain_name
+    zone_id                = aws_api_gateway_domain_name.tamotsu_app.regional_zone_id
+    evaluate_target_health = true
+  }
+}
+
 # API Gatewayの作成
 resource "aws_api_gateway_rest_api" "tamotsu_api" {
   name        = "tamotsu-api"
@@ -261,96 +279,77 @@ resource "aws_api_gateway_resource" "user_resource" {
   depends_on  = [aws_api_gateway_rest_api.tamotsu_api]
 }
 
-# /register リソースの作成 (apiリソースの子)
-resource "aws_api_gateway_resource" "register" {
-  rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
-  parent_id   = aws_api_gateway_resource.user_resource.id  # 親リソースを/api/userに変更
-  path_part   = "register"
+
+# lambdaの定義
+locals {
+  lambda_functions = {
+    register = {
+      filename = "../api/user/register/register.zip"
+      handler  = "register.handler"
+      env_vars = {
+        FROM_EMAIL_ADDRESS          = var.send_mail_address
+        COGNITO_USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.client.id
+      }
+      http_method = "POST"
+      parent_id   = aws_api_gateway_resource.user_resource.id  # 親リソースを設定
+    }
+    login = {
+      filename = "../api/user/login/login.zip"
+      handler  = "login.handler"
+      env_vars = {
+        COGNITO_USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.client.id
+      }
+      http_method = "POST"
+      parent_id   = aws_api_gateway_resource.user_resource.id  # 親リソースを設定
+    }
+    confirm = {
+      filename = "../api/user/confirm/confirm.zip"
+      handler  = "confirm.handler"
+      env_vars = {
+        COGNITO_USER_POOL_ID = aws_cognito_user_pool.tamotsu_user_pool.id
+      }
+      http_method = "GET"
+      parent_id   = aws_api_gateway_resource.user_resource.id  # 親リソースを設定
+    }
+  }
 }
 
-# /login リソースの作成 (apiリソースの子)
-resource "aws_api_gateway_resource" "login" {
+# 関数のリソースの作成 (userリソースの子)
+resource "aws_api_gateway_resource" "gw_resources" {
+  for_each = local.lambda_functions
+
   rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
-  parent_id   = aws_api_gateway_resource.user_resource.id  # 親リソースを/api/userに変更
-  path_part   = "login"
+  parent_id   = each.value.parent_id
+  path_part   = each.key
 }
 
-# /user/confirm リソースの作成
-resource "aws_api_gateway_resource" "confirm" {
-  rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
-  parent_id   = aws_api_gateway_resource.user_resource.id
-  path_part   = "confirm"
-}
+# 関数用メソッド[OPTIONS]の作成
+resource "aws_api_gateway_method" "gw_options" {
+  for_each = local.lambda_functions
 
-# /register リソースの POST メソッドの作成
-resource "aws_api_gateway_method" "register_post" {
   rest_api_id   = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id   = aws_api_gateway_resource.register.id
-  http_method   = "POST"
-  authorization = "NONE"
-}
-
-# /register リソースの POST メソッドの作成
-resource "aws_api_gateway_method" "register_options" {
-  rest_api_id   = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id   = aws_api_gateway_resource.register.id
+  resource_id   = aws_api_gateway_resource.gw_resources[each.key].id
   http_method   = "OPTIONS"
   authorization = "NONE"
 }
 
-# /login リソースの POST メソッドの作成
-resource "aws_api_gateway_method" "login_post" {
+# 関数用メソッドの作成
+resource "aws_api_gateway_method" "gw_methods" {
+  for_each = local.lambda_functions
+
   rest_api_id   = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id   = aws_api_gateway_resource.login.id
-  http_method   = "POST"
+  resource_id   = aws_api_gateway_resource.gw_resources[each.key].id
+  http_method   = each.value.http_method
   authorization = "NONE"
 }
 
-# /user/confirm リソースの GET メソッドの作成
-resource "aws_api_gateway_method" "confirm_get" {
-  rest_api_id   = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id   = aws_api_gateway_resource.confirm.id
-  http_method   = "GET"
-  authorization = "NONE"
-}
+# 関数用メソッド[OPTIONS]とlambda関数を統合
+resource "aws_api_gateway_integration" "gw_options_integrations" {
+  for_each = local.lambda_functions
 
-# /register メソッドと Lambda 関数の連携
-resource "aws_api_gateway_integration" "register_integration" {
   rest_api_id             = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id             = aws_api_gateway_resource.register.id
-  http_method             = aws_api_gateway_method.register_post.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.register_function.invoke_arn
-}
-
-# /register メソッドのreponse
-resource "aws_api_gateway_integration_response" "post_integration_response" {
-  rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id = aws_api_gateway_resource.register.id
-  http_method = aws_api_gateway_method.register_post.http_method
-  status_code = aws_api_gateway_method_response.register_post_reponse.status_code
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin" = "'*'"
-  }
-}
-
-# /register メソッドのreponse
-resource "aws_api_gateway_method_response" "register_post_reponse" {
-  rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id = aws_api_gateway_resource.register.id
-  http_method = aws_api_gateway_method.register_post.http_method
-  status_code = "200"
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin" = true
-  }
-}
-
-# /register メソッドと Lambda 関数の連携
-resource "aws_api_gateway_integration" "register_options_integration" {
-  rest_api_id             = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id             = aws_api_gateway_resource.register.id
-  http_method             = aws_api_gateway_method.register_options.http_method
+  resource_id             = aws_api_gateway_resource.gw_resources[each.key].id
+  http_method             = aws_api_gateway_method.gw_options[each.key].http_method
   type                    = "MOCK"
   request_templates = {
     "application/json" = jsonencode({
@@ -359,11 +358,56 @@ resource "aws_api_gateway_integration" "register_options_integration" {
   }
 }
 
-# OPTIONSメソッドのレスポンス
-resource "aws_api_gateway_method_response" "register_options_response" {
+# 関数用メソッドとlambda関数を統合
+resource "aws_api_gateway_integration" "gw_method_integrations" {
+  for_each = local.lambda_functions
+
   rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id = aws_api_gateway_resource.register.id
-  http_method = aws_api_gateway_method.register_options.http_method
+  resource_id = aws_api_gateway_resource.gw_resources[each.key].id
+  http_method = each.value.http_method
+
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = module.lambda_functions[each.key].function_invoke_arn
+}
+
+# lambda関数からapi gwへのレスポンス[OPTIONS]
+resource "aws_api_gateway_integration_response" "gw_options_integration_responses" {
+  for_each = local.lambda_functions
+
+  rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
+  resource_id = aws_api_gateway_resource.gw_resources[each.key].id
+  http_method = aws_api_gateway_method.gw_options[each.key].http_method
+  status_code = aws_api_gateway_method_response.gw_options_responses[each.key].status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS,POST,PUT'",
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+
+  depends_on = [aws_api_gateway_integration.gw_options_integrations]
+}
+
+# lambda関数からapi gwへのレスポンス
+resource "aws_api_gateway_integration_response" "gw_method_integration_responses" {
+  for_each = local.lambda_functions
+
+  rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
+  resource_id = aws_api_gateway_resource.gw_resources[each.key].id
+  http_method = aws_api_gateway_method.gw_methods[each.key].http_method
+  status_code = aws_api_gateway_method_response.gw_method_reponses[each.key].status_code
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Origin" = "'*'"
+  }
+}
+
+# api gwからのreponse[OPTIONS]
+resource "aws_api_gateway_method_response" "gw_options_responses" {
+  for_each = local.lambda_functions
+
+  rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
+  resource_id = aws_api_gateway_resource.gw_resources[each.key].id
+  http_method = aws_api_gateway_method.gw_options[each.key].http_method
   status_code = "200"
   response_models = {
     "application/json" = "Empty"
@@ -375,38 +419,18 @@ resource "aws_api_gateway_method_response" "register_options_response" {
   }
 }
 
-# OPTIONSメソッドの統合レスポンス
-resource "aws_api_gateway_integration_response" "options_integration_response" {
+
+# api gwからのreponse
+resource "aws_api_gateway_method_response" "gw_method_reponses" {
+  for_each = local.lambda_functions
+
   rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id = aws_api_gateway_resource.register.id
-  http_method = aws_api_gateway_method.register_options.http_method
-  status_code = aws_api_gateway_method_response.register_options_response.status_code
+  resource_id = aws_api_gateway_resource.gw_resources[each.key].id
+  http_method = aws_api_gateway_method.gw_methods[each.key].http_method
+  status_code = "200"
   response_parameters = {
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
-    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS,POST,PUT'",
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+    "method.response.header.Access-Control-Allow-Origin" = true
   }
-}
-
-# /login メソッドと Lambda 関数の連携
-resource "aws_api_gateway_integration" "login_integration" {
-  rest_api_id             = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id             = aws_api_gateway_resource.login.id
-  http_method             = aws_api_gateway_method.login_post.http_method
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.login_function.invoke_arn
-}
-
-# /user/confirm メソッドと Lambda 関数の連携
-resource "aws_api_gateway_integration" "confirm_integration" {
-  rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id = aws_api_gateway_resource.confirm.id
-  http_method = aws_api_gateway_method.confirm_get.http_method
-
-  integration_http_method = "POST"
-  type                    = "AWS_PROXY"
-  uri                     = aws_lambda_function.confirm_function.invoke_arn
 }
 
 # Lambdaレイヤーの取得
@@ -415,122 +439,64 @@ data "aws_lambda_layer_version" "aws_sdk_layer" {
   version             = 1
 }
 
-# Lambda関数 (register)
-resource "aws_lambda_function" "register_function" {
-  function_name = "tamotsu-register-function"
-  filename      = "../api/user/register/register.zip"
-  handler       = "register.handler"
-  runtime       = "nodejs20.x"
-  role          = aws_iam_role.lambda_role.arn
-  timeout       = 15
-  vpc_config {
-    subnet_ids         = [aws_subnet.private_subnet.id]
-    security_group_ids = [aws_security_group.lambda_sg.id]
-  }
-  environment {
-    variables = {
-      FROM_EMAIL_ADDRESS          = var.send_mail_address
-      COGNITO_USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.client.id
-    }
-  }
-  layers = [data.aws_lambda_layer_version.aws_sdk_layer.arn]
-}
+# Lambda関数実装
+module "lambda_functions" {
+  source   = "./modules/lambda"
+  for_each = local.lambda_functions
 
-# Lambda関数 (login)
-resource "aws_lambda_function" "login_function" {
-  function_name = "tamotsu-login-function"
-  filename      = "../api/user/login/login.zip"       # ログイン用 Lambda 関数のコード (login.js) を含む zip ファイル
-  handler       = "login.handler"
+  function_name = "tamotsu-${each.key}-function"
+  filename      = each.value.filename
+  handler       = each.value.handler
   runtime       = "nodejs20.x"
-  role          = aws_iam_role.lambda_role.arn
-  timeout       = 15
-  vpc_config {
-    subnet_ids         = [aws_subnet.private_subnet.id]
-    security_group_ids = [aws_security_group.lambda_sg.id]
-  }
-  environment {
-    variables = {
-      COGNITO_USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.client.id
-    }
-  }
-  layers = [data.aws_lambda_layer_version.aws_sdk_layer.arn]
-}
+  role_arn      = aws_iam_role.lambda_role.arn
 
-# Lambda関数 (confirm)
-resource "aws_lambda_function" "confirm_function" {
-  function_name = "tamotsu-confirm-function"
-  filename      = "../api/user/confirm/confirm.zip"
-  handler       = "confirm.handler"
-  runtime       = "nodejs20.x"
-  role          = aws_iam_role.lambda_role.arn
-  timeout       = 15
-
-  vpc_config {
+  vpc_config = {
     subnet_ids         = [aws_subnet.private_subnet.id]
     security_group_ids = [aws_security_group.lambda_sg.id]
   }
 
-  environment {
-    variables = {
-      COGNITO_USER_POOL_ID = aws_cognito_user_pool.tamotsu_user_pool.id
-    }
-  }
-
-  layers = [data.aws_lambda_layer_version.aws_sdk_layer.arn]
+  environment_variables = each.value.env_vars
+  layer_arns            = [data.aws_lambda_layer_version.aws_sdk_layer.arn]
 }
 
-# Lambda 関数に API Gateway からのアクセスを許可 (register)
-resource "aws_lambda_permission" "apigw_register_lambda" {
+# Lambda 関数に API Gateway からのアクセスを許可
+resource "aws_lambda_permission" "api_gw_lambda_permissions" {
+  for_each = local.lambda_functions
+
   depends_on = [
     aws_api_gateway_deployment.tamotsu_deployment,
   ]
   statement_id  = "AllowExecutionFromAPIGateway"
   action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.register_function.function_name
+  function_name = module.lambda_functions[each.key].function_name
   principal     = "apigateway.amazonaws.com"
 
-  source_arn = "${aws_api_gateway_rest_api.tamotsu_api.execution_arn}/*/${aws_api_gateway_method.register_post.http_method}${aws_api_gateway_resource.register.path}"
-}
-
-# Lambda 関数に API Gateway からのアクセスを許可 (login)
-resource "aws_lambda_permission" "apigw_login_lambda" {
-  depends_on = [
-    aws_api_gateway_deployment.tamotsu_deployment,
-  ]
-  statement_id  = "AllowExecutionFromAPIGateway"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.login_function.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.tamotsu_api.execution_arn}/*/${aws_api_gateway_method.login_post.http_method}${aws_api_gateway_resource.login.path}"
-}
-
-# Lambda 関数に API Gateway からのアクセスを許可 (confirm)
-resource "aws_lambda_permission" "apigw_confirm_lambda" {
-  statement_id  = "AllowExecutionFromAPIGateway"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.confirm_function.function_name
-  principal     = "apigateway.amazonaws.com"
-
-  source_arn = "${aws_api_gateway_rest_api.tamotsu_api.execution_arn}/*/${aws_api_gateway_method.confirm_get.http_method}${aws_api_gateway_resource.confirm.path}"
+  source_arn = "${aws_api_gateway_rest_api.tamotsu_api.execution_arn}/*/${each.value.http_method}${aws_api_gateway_resource.gw_resources[each.key].path}"
 }
 
 # API Gateway のデプロイ
 resource "aws_api_gateway_deployment" "tamotsu_deployment" {
   depends_on = [
-    aws_api_gateway_integration.register_integration,
-    aws_api_gateway_integration.login_integration,
-    aws_api_gateway_integration.confirm_integration,
+    aws_api_gateway_integration.gw_method_integrations,
+    aws_api_gateway_integration.gw_options_integrations
   ]
 
   rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
   stage_name  = "dev"
+
+  # 変更がある場合のみ再デプロイするためのトリガー
+  triggers = {
+    redeployment = sha1(jsonencode(aws_api_gateway_integration.gw_method_integrations))
+  }
 }
 
 # API Gatewayのマッピングを作成
 resource "aws_api_gateway_base_path_mapping" "tamotsu_app" {
   api_id      = aws_api_gateway_rest_api.tamotsu_api.id
-  stage_name  = "dev"
+  stage_name  = aws_api_gateway_deployment.tamotsu_deployment.stage_name
   domain_name = aws_api_gateway_domain_name.tamotsu_app.domain_name
+
+  depends_on = [aws_api_gateway_deployment.tamotsu_deployment]
 }
 
 # SESの設定

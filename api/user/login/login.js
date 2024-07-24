@@ -24,6 +24,11 @@ exports.handler = async (event) => {
         // 認証成功時の処理
         return {
             statusCode: 200,
+            headers: {
+              "Access-Control-Allow-Origin": "*", // 本番環境では特定のオリジンに制限することをお勧めします
+              "Access-Control-Allow-Headers": "Content-Type",
+              "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+            },
             body: JSON.stringify({
                 message: 'Login successful',
                 token: result.AuthenticationResult.IdToken,
@@ -43,6 +48,11 @@ exports.handler = async (event) => {
 
         return {
             statusCode: 400,
+            headers: {
+              "Access-Control-Allow-Origin": "*", // 本番環境では特定のオリジンに制限することをお勧めします
+              "Access-Control-Allow-Headers": "Content-Type",
+              "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+            },
             body: JSON.stringify({ message: errorMessage })
         };
     }

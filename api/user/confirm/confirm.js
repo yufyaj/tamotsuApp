@@ -8,6 +8,11 @@ exports.handler = async (event) => {
     if (!email || !code) {
         return {
             statusCode: 400,
+            headers: {
+                "Access-Control-Allow-Origin": "*", // 本番環境では特定のオリジンに制限することをお勧めします
+                "Access-Control-Allow-Headers": "Content-Type",
+                "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+            },
             body: JSON.stringify({ message: 'Email and verification code are required' })
         };
     }
@@ -25,6 +30,11 @@ exports.handler = async (event) => {
         if (userList.Users.length === 0) {
             return {
                 statusCode: 404,
+                headers: {
+                    "Access-Control-Allow-Origin": "*", // 本番環境では特定のオリジンに制限することをお勧めします
+                    "Access-Control-Allow-Headers": "Content-Type",
+                    "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+                },
                 body: JSON.stringify({ message: 'User not found' })
             };
         }
@@ -35,6 +45,11 @@ exports.handler = async (event) => {
         if (code !== storedCode) {
             return {
                 statusCode: 400,
+                headers: {
+                    "Access-Control-Allow-Origin": "*", // 本番環境では特定のオリジンに制限することをお勧めします
+                    "Access-Control-Allow-Headers": "Content-Type",
+                    "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+                },
                 body: JSON.stringify({ message: 'Invalid verification code' })
             };
         }
@@ -68,12 +83,22 @@ exports.handler = async (event) => {
 
         return {
             statusCode: 200,
+            headers: {
+                "Access-Control-Allow-Origin": "*", // 本番環境では特定のオリジンに制限することをお勧めします
+                "Access-Control-Allow-Headers": "Content-Type",
+                "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+            },
             body: JSON.stringify({ message: 'Email verified successfully' })
         };
     } catch (error) {
         console.error('Error:', error);
         return {
             statusCode: 500,
+            headers: {
+                "Access-Control-Allow-Origin": "*", // 本番環境では特定のオリジンに制限することをお勧めします
+                "Access-Control-Allow-Headers": "Content-Type",
+                "Access-Control-Allow-Methods": "OPTIONS,POST,GET"
+            },
             body: JSON.stringify({ message: 'Internal server error' })
         };
     }
