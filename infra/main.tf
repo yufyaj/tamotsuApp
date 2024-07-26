@@ -109,40 +109,39 @@ resource "aws_iam_role" "lambda_role" {
   })
 }
 
+# lambdaに適用するIAMの定義
+locals {
+  lambda_iam = {
+    lambda_execute           = {
+      policy_arn = "arn:aws:iam::aws:policy/AWSLambdaExecute"
+    }
+    vpc_full_access          = {
+      policy_arn = "arn:aws:iam::aws:policy/AmazonVPCFullAccess"
+    }
+    s3_full_access           = {
+      policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+    }
+    dynamodb_full_access     = {
+      policy_arn = "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
+    }
+    ec2_full_access          = {
+      policy_arn = "arn:aws:iam::aws:policy/AmazonEC2FullAccess"
+    }
+    ses_send_templated_email = {
+      policy_arn = "arn:aws:iam::aws:policy/AmazonSESFullAccess"
+    }
+    cognito_access           = {
+      policy_arn = "arn:aws:iam::aws:policy/AmazonCognitoPowerUser"
+    }
+  }
+}
+
 # IAMポリシーのアタッチ
 resource "aws_iam_role_policy_attachment" "lambda_execute" {
-  role       = aws_iam_role.lambda_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AWSLambdaExecute"
-}
+  for_each = local.lambda_iam
 
-resource "aws_iam_role_policy_attachment" "vpc_full_access" {
   role       = aws_iam_role.lambda_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonVPCFullAccess"
-}
-
-resource "aws_iam_role_policy_attachment" "s3_full_access" {
-  role       = aws_iam_role.lambda_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
-}
-
-resource "aws_iam_role_policy_attachment" "dynamodb_full_access" {
-  role       = aws_iam_role.lambda_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
-}
-
-resource "aws_iam_role_policy_attachment" "ec2_full_access" {
-  role       = aws_iam_role.lambda_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2FullAccess"
-}
-
-resource "aws_iam_role_policy_attachment" "ses_send_templated_email" {
-  role       = aws_iam_role.lambda_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonSESFullAccess"
-}
-
-resource "aws_iam_role_policy_attachment" "cognito_access" {
-  role       = aws_iam_role.lambda_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonCognitoPowerUser"
+  policy_arn = each.value.policy_arn
 }
 
 # SES IDを取得

@@ -5,3 +5,4 @@ infra/env1.tfvars
 .vscode
 nodejs
 api/user/*/*.zip
+~*
