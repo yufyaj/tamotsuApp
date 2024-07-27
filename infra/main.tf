@@ -200,26 +200,87 @@ resource "aws_cognito_user_pool_client" "client" {
   explicit_auth_flows = ["ALLOW_USER_PASSWORD_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
 }
 
-# DynamoDBテーブルの作成
-resource "aws_dynamodb_table" "tamotsu_user_table" {
-  name           = "tamotsu-users" 
-  billing_mode   = "PAY_PER_REQUEST"  # 従量課金モードに変更
-  hash_key       = "id"                # ハッシュキーをidに変更
+# dynamodbの作成
+resource "aws_dynamodb_table" "tamotsu_table" {
+  name           = "tamotsu-table"
+  billing_mode   = "PAY_PER_REQUEST"
+  hash_key       = "PK"
+  range_key      = "SK"
 
   attribute {
-    name = "id"
+    name = "PK"
     type = "S"
   }
 
   attribute {
-    name = "email"
+    name = "SK"
     type = "S"
   }
 
-  global_secondary_index {          # emailの重複を許さないためのGSIを追加
-    name               = "email-index"
-    hash_key           = "email"
+  attribute {
+    name = "GSI1PK"
+    type = "S"
+  }
+
+  attribute {
+    name = "GSI1SK"
+    type = "S"
+  }
+
+  attribute {
+    name = "GSI2PK"
+    type = "S"
+  }
+
+  attribute {
+    name = "GSI2SK"
+    type = "S"
+  }
+
+  attribute {
+    name = "GSI3PK"
+    type = "S"
+  }
+
+  attribute {
+    name = "GSI3SK"
+    type = "S"
+  }
+
+  attribute {
+    name = "Type"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name               = "GSI1"
+    hash_key           = "GSI1PK"
+    range_key          = "GSI1SK"
     projection_type    = "ALL"
+  }
+
+  global_secondary_index {
+    name               = "GSI2"
+    hash_key           = "GSI2PK"
+    range_key          = "GSI2SK"
+    projection_type    = "ALL"
+  }
+
+  global_secondary_index {
+    name               = "GSI3"
+    hash_key           = "GSI3PK"
+    range_key          = "GSI3SK"
+    projection_type    = "ALL"
+  }
+
+  ttl {
+    attribute_name = "TTL"
+    enabled        = true
+  }
+
+  tags = {
+    Name        = "tamotsu-table"
+    Environment = "production"
   }
 }
 
@@ -270,50 +331,81 @@ resource "aws_api_gateway_rest_api" "tamotsu_api" {
   }
 }
 
-# /user リソースの作成 (APIゲートウェイの子)
-resource "aws_api_gateway_resource" "user_resource" {
+# /auth リソースの作成 (APIゲートウェイの子)
+resource "aws_api_gateway_resource" "auth_resource" {
   rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
   parent_id   = aws_api_gateway_rest_api.tamotsu_api.root_resource_id
-  path_part   = "user"
+  path_part   = "auth"
   depends_on  = [aws_api_gateway_rest_api.tamotsu_api]
 }
 
+# /users リソースの作成 (APIゲートウェイの子)
+resource "aws_api_gateway_resource" "users_resource" {
+  rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
+  parent_id   = aws_api_gateway_rest_api.tamotsu_api.root_resource_id
+  path_part   = "users"
+  depends_on  = [aws_api_gateway_rest_api.tamotsu_api]
+}
+
+# /nutritionists リソースの作成 (APIゲートウェイの子)
+resource "aws_api_gateway_resource" "nutritionists_resource" {
+  rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
+  parent_id   = aws_api_gateway_rest_api.tamotsu_api.root_resource_id
+  path_part   = "nutritionists"
+  depends_on  = [aws_api_gateway_rest_api.tamotsu_api]
+}
+
+# /health リソースの作成 (APIゲートウェイの子)
+resource "aws_api_gateway_resource" "health_resource" {
+  rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
+  parent_id   = aws_api_gateway_rest_api.tamotsu_api.root_resource_id
+  path_part   = "health"
+  depends_on  = [aws_api_gateway_rest_api.tamotsu_api]
+}
+
+# /chat リソースの作成 (APIゲートウェイの子)
+resource "aws_api_gateway_resource" "chat_resource" {
+  rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
+  parent_id   = aws_api_gateway_rest_api.tamotsu_api.root_resource_id
+  path_part   = "chat"
+  depends_on  = [aws_api_gateway_rest_api.tamotsu_api]
+}
 
 # lambdaの定義
 locals {
   lambda_functions = {
     register = {
-      filename = "../api/user/register/register.zip"
+      filename = "../api/auth/register/register.zip"
       handler  = "register.handler"
       env_vars = {
         FROM_EMAIL_ADDRESS          = var.send_mail_address
         COGNITO_USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.client.id
       }
       http_method = "POST"
-      parent_id   = aws_api_gateway_resource.user_resource.id  # 親リソースを設定
+      parent_id   = aws_api_gateway_resource.auth_resource.id  # 親リソースを設定
     }
     login = {
-      filename = "../api/user/login/login.zip"
+      filename = "../api/auth/login/login.zip"
       handler  = "login.handler"
       env_vars = {
         COGNITO_USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.client.id
       }
       http_method = "POST"
-      parent_id   = aws_api_gateway_resource.user_resource.id  # 親リソースを設定
+      parent_id   = aws_api_gateway_resource.auth_resource.id  # 親リソースを設定
     }
-    confirm = {
-      filename = "../api/user/confirm/confirm.zip"
-      handler  = "confirm.handler"
+    verify-email = {
+      filename = "../api/auth/verify-email/verify-email.zip"
+      handler  = "verify-email.handler"
       env_vars = {
         COGNITO_USER_POOL_ID = aws_cognito_user_pool.tamotsu_user_pool.id
       }
       http_method = "GET"
-      parent_id   = aws_api_gateway_resource.user_resource.id  # 親リソースを設定
+      parent_id   = aws_api_gateway_resource.auth_resource.id  # 親リソースを設定
     }
   }
 }
 
-# 関数のリソースの作成 (userリソースの子)
+# 関数のリソースの作成
 resource "aws_api_gateway_resource" "gw_resources" {
   for_each = local.lambda_functions
 
