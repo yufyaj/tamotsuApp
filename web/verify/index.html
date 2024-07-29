@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>リダイレクト</title>
+    <script>
+    function redirect() {
+        var urlParams = new URLSearchParams(window.location.search);
+        var token = urlParams.get('token');
+        
+        if (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+            // モバイルデバイスの場合
+            if (isAppInstalled()) {
+                window.location.href = "myapp://verify?token=" + token;
+            } else {
+                window.location.href = "https://play.google.com/store/apps/details?id=com.example.myapp";
+            }
+        } else {
+            // PCの場合
+            window.location.href = "https://example.com/verify?token=" + token;
+        }
+    }
+
+    function isAppInstalled() {
+        // アプリがインストールされているかどうかを確認するロジック
+        // これは簡略化された例で、実際の実装はより複雑になる可能性があります
+        return false;
+    }
+
+    // ページ読み込み時にリダイレクト関数を実行
+    window.onload = redirect;
+    </script>
+</head>
+<body>
+    <p>リダイレクト中...</p>
+</body>
+</html>

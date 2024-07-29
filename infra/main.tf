@@ -35,6 +35,13 @@ provider "aws" {
   secret_key = var.aws_secret_access_key
 }
 
+provider "aws" {
+  alias  = "us-east-1"
+  region = "us-east-1"
+  access_key = var.aws_access_key_id
+  secret_key = var.aws_secret_access_key
+}
+
 # VPCの設定
 resource "aws_vpc" "tamotsu_vpc" {
   cidr_block = var.vpc_cidr_block
@@ -302,6 +309,16 @@ resource "aws_s3_bucket_website_configuration" "tamotsu_webapp" {
   }
 }
 
+# 直接S3にアクセスされることを防ぐ
+resource "aws_s3_bucket_public_access_block" "tamotsu_webapp" {
+  bucket = aws_s3_bucket.tamotsu_webapp.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
 # S3 CORSの設定
 resource "aws_s3_bucket_cors_configuration" "tamotsu_webapp" {
   bucket = aws_s3_bucket.tamotsu_webapp.id
@@ -315,15 +332,41 @@ resource "aws_s3_bucket_cors_configuration" "tamotsu_webapp" {
   }
 }
 
+# 検証ページ追加
+# 最終的にはページを変数として保持してforeachで回す？
+resource "aws_s3_object" "verify_redirect_page" {
+  bucket = aws_s3_bucket.tamotsu_webapp.id
+  key    = "verify/index.html"
+  source = "../web/verify/index.html"
+  content_type = "text/html; charset=utf-8"
+}
+
+resource "aws_s3_object" "index_page" {
+  bucket = aws_s3_bucket.tamotsu_webapp.id
+  key    = "index.html"
+  source = "../web/index.html"
+  content_type = "text/html; charset=utf-8"
+}
+
+resource "aws_cloudfront_origin_access_control" "default" {
+  name                              = "S3 OAC for ${aws_s3_bucket.tamotsu_webapp.id}"
+  description                       = "Origin Access Control for S3"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
 # CloudFrontディストリビューションの作成
 resource "aws_cloudfront_distribution" "tamotsu_webapp" {
   origin {
     domain_name = aws_s3_bucket.tamotsu_webapp.bucket_regional_domain_name
     origin_id   = "S3-${aws_s3_bucket.tamotsu_webapp.id}"
+    origin_access_control_id = aws_cloudfront_origin_access_control.default.id
   }
 
   enabled             = true
   default_root_object = "index.html"
+  aliases             = [var.my_domain]
 
   default_cache_behavior {
     allowed_methods  = ["GET", "HEAD"]
@@ -356,14 +399,50 @@ resource "aws_cloudfront_distribution" "tamotsu_webapp" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn = data.aws_acm_certificate.tamotsu_webapp.arn
+    ssl_support_method  = "sni-only"
   }
+
+  # キャッシュ無効化のトリガー
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+data "aws_iam_policy_document" "s3_policy" {
+  statement {
+    actions   = ["s3:GetObject"]
+    resources = ["${aws_s3_bucket.tamotsu_webapp.arn}/*"]
+    
+    principals {
+      type        = "Service"
+      identifiers = ["cloudfront.amazonaws.com"]
+    }
+    
+    condition {
+      test     = "StringEquals"
+      variable = "AWS:SourceArn"
+      values   = [aws_cloudfront_distribution.tamotsu_webapp.arn]
+    }
+  }
+}
+
+resource "aws_s3_bucket_policy" "tamotsu_webapp" {
+  bucket = aws_s3_bucket.tamotsu_webapp.id
+  policy = data.aws_iam_policy_document.s3_policy.json
 }
 
 # 証明書の作成
 resource "aws_acm_certificate" "api_tamotsu" {
   domain_name       = "api.${var.my_domain}"
   validation_method = "DNS"
+}
+
+# コンソール上で手動で作成済みのためそれを取得
+data "aws_acm_certificate" "tamotsu_webapp" {
+  provider = aws.us-east-1
+  domain   = "tamotsu-app.com"
+  statuses = ["ISSUED"]
 }
 
 resource "aws_acm_certificate_validation" "api_tamotsu" {
