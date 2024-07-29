@@ -1,94 +1,70 @@
 const AWS = require('aws-sdk');
+const { successResponse, errorResponse } = require('response-utils');
 const cognito = new AWS.CognitoIdentityServiceProvider();
+const dynamodb = new AWS.DynamoDB.DocumentClient();
 const ses = new AWS.SES();
 
 exports.handler = async (event) => {
-    const { email, password, userType } = JSON.parse(event.body);
+    const { email, userType } = JSON.parse(event.body);
     const clientId = process.env.COGNITO_USER_POOL_CLIENT_ID;
+    const userPoolId = process.env.COGNITO_USER_POOL_ID;
 
     // 入力バリデーション
-    if (!email || !password || !userType) {
-        return response(400, { message: '必須フィールドが不足しています' });
-    }
-    
-    // カスタム検証コードの生成
-    const verificationCode = Math.random().toString(36).substring(2, 8);
-
-    const params = {
-        ClientId: clientId,
-        Username: email,
-        Password: password,
-        UserAttributes: [
-            {
-                Name: 'email',
-                Value: email
-            }, {
-                Name: 'custom:verificationCode', 
-                Value: verificationCode
-            }
-        ]
-    };
-
-    try {
-        const result = await cognito.signUp(params).promise();
-        const userId = result.UserSub;
-        console.log('User signed up successfully:', result);
-    } catch (error) {
-        console.error('Error signing up user:', error);
-        return response(500, JSON.stringify({ message: 'Error signing up user', error: error.message }));
+    if (!email || !userType) {
+        return errorResponse('必須フィールドが不足しています');
     }
 
     try {
-        // DynamoDBにユーザー情報を保存
+        // Cognitoでメールアドレスの存在確認
+        const listUsersParams = {
+            UserPoolId: userPoolId,
+            Filter: `email = "${email}"`,
+            Limit: 1
+        };
+        const existingUsers = await cognito.listUsers(listUsersParams).promise();
+        if (existingUsers.Users.length > 0) {
+            return errorResponse('このメールアドレスは既に登録されています');
+        }
+
+        // 検証コードの生成
+        const verificationCode = Math.random().toString(36).substring(2, 8);
+
+        // DynamoDBにユーザー情報を一時保存
+        const timestamp = new Date().toISOString();
         const dynamoParams = {
-            TableName: 'Users',
+            TableName: 'tamotsu-table',
             Item: {
-              PK: `USER#${userId}`,
-              SK: 'METADATA#',
-              GSI1PK: 'TYPE#USER',
-              GSI1SK: `USER#${userId}`,
-              GSI2PK: `EMAIL#${email}`,
-              GSI2SK: `USER#${userId}`,
-              Type: 'USER',
-              Data: {
-                email: email,
-                userType: userType,
-                created_at: new Date().toISOString(),
-                isVerified: false
-              }
+                PK: `EMAIL#${email}`,
+                SK: `METADATA#${timestamp}`,
+                TypePK: `TYPE#TEMP_USER`,
+                TypeSK: `EMAIL#${email}`,
+                GSI1PK: `STATUS#UNVERIFIED`,
+                GSI1SK: `CREATED#${timestamp}`,
+                Type: 'TEMP_USER',
+                Data: {
+                    email: email,
+                    user_type: userType,
+                    verification_code: verificationCode,
+                    created_at: timestamp
+                }
             }
         };
-    } catch (error) {
-        await dynamodb.put(dynamoParams).promise();
-    }
 
-    try{
-        // カスタム検証メールの送信
+        await dynamodb.put(dynamoParams).promise();
+
+        // 確認メールの送信
         await ses.sendEmail({
             Destination: { ToAddresses: [email] },
             Message: {
-                Body: { Text: { Data: `TAMOTSUへご登録頂きありがとうございます。\nhttps://api.tamotsu-app.com/user/confirm?email=${email}&code=${verificationCode}` } },
+                Body: { Text: { Data: `TAMOTSUへご登録頂きありがとうございます。\n\n以下のリンクから確認を完了してください：\nhttps://api.tamotsu-app.com/auth/verify-email?email=${email}&code=${verificationCode}` } },
                 Subject: { Data: 'TAMOTSUへご登録ありがとうございます' }
             },
             Source: process.env.FROM_EMAIL_ADDRESS
         }).promise();
 
-        return response(200, JSON.stringify({ message: 'User signed up successfully'});
+        return successResponse({message:'仮登録が完了しました。メールをご確認ください。'});
     } catch (error) {
-        console.error('Error send mail:', error);
-        return response(500, { message: 'Error send mail', error: error.message });
+        console.error('Error:', error);
+        return errorResponse('サーバーエラーが発生しました');
     }
 };
-
-function response(statusCode, body) {
-    return {
-      statusCode: statusCode,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*', // CORSの設定 本番環境では特定のオリジンに制限することをお勧めします
-        'Access-Control-Allow-Credentials': true,
-        "Access-Control-Allow-Headers": "Content-Type",
-},
-      body: JSON.stringify(body)
-    };
-  }

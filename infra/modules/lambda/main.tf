@@ -8,12 +8,13 @@ variable "vpc_config" {}
 variable "layer_arns" {}
 
 resource "aws_lambda_function" "function" {
-  function_name = var.function_name
-  filename      = var.filename
-  handler       = var.handler
-  runtime       = var.runtime
-  role          = var.role_arn
-  timeout       = 30
+  function_name    = var.function_name
+  filename         = var.filename
+  handler          = var.handler
+  runtime          = var.runtime
+  role             = var.role_arn
+  timeout          = 30
+  source_code_hash = filebase64sha256(var.filename)
 
   vpc_config {
     subnet_ids         = var.vpc_config.subnet_ids

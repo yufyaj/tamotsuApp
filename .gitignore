@@ -3,6 +3,7 @@ infra/env1.tfvars
 .terraform.lock.hcl
 .infracost
 .vscode
-nodejs
+api/layers/aws-sdk-layer/nodejs/node_modules
+api/layer/*/*.zip
 api/user/*/*.zip
 ~*

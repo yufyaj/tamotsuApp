@@ -335,17 +335,19 @@ resource "aws_s3_bucket_cors_configuration" "tamotsu_webapp" {
 # 検証ページ追加
 # 最終的にはページを変数として保持してforeachで回す？
 resource "aws_s3_object" "verify_redirect_page" {
-  bucket = aws_s3_bucket.tamotsu_webapp.id
-  key    = "verify/index.html"
-  source = "../web/verify/index.html"
+  bucket       = aws_s3_bucket.tamotsu_webapp.id
+  key          = "verify/index.html"
+  source       = "../web/verify/index.html"
   content_type = "text/html; charset=utf-8"
+  etag         = filemd5("../web/verify/index.html")
 }
 
 resource "aws_s3_object" "index_page" {
-  bucket = aws_s3_bucket.tamotsu_webapp.id
-  key    = "index.html"
-  source = "../web/index.html"
+  bucket       = aws_s3_bucket.tamotsu_webapp.id
+  key          = "index.html"
+  source       = "../web/index.html"
   content_type = "text/html; charset=utf-8"
+  etag         = filemd5("../web/index.html")
 }
 
 resource "aws_cloudfront_origin_access_control" "default" {
@@ -548,6 +550,7 @@ locals {
       env_vars = {
         FROM_EMAIL_ADDRESS          = var.send_mail_address
         COGNITO_USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.client.id
+        COGNITO_USER_POOL_ID        = aws_cognito_user_pool.tamotsu_user_pool.id
       }
       http_method = "POST"
       parent_id   = aws_api_gateway_resource.auth_resource.id  # 親リソースを設定
@@ -692,6 +695,17 @@ resource "aws_api_gateway_method_response" "gw_method_reponses" {
   }
 }
 
+# レイヤーの定義
+resource "aws_lambda_layer_version" "response-utils-layer" {
+  filename   = "../api/layers/response-utils-layer/response-utils-layer.zip"
+  layer_name = "response-utils-layer-layer"
+
+  compatible_runtimes = ["nodejs14.x", "nodejs16.x", "nodejs18.x"]
+
+  # レイヤーが更新されたときに新しいバージョンを作成
+  source_code_hash = filebase64sha256("../api/layers/response-utils-layer/response-utils-layer.zip")
+}
+
 # Lambdaレイヤーの取得
 data "aws_lambda_layer_version" "aws_sdk_layer" {
   layer_name          = "aws-sdk-layer"
@@ -715,7 +729,7 @@ module "lambda_functions" {
   }
 
   environment_variables = each.value.env_vars
-  layer_arns            = [data.aws_lambda_layer_version.aws_sdk_layer.arn]
+  layer_arns            = [data.aws_lambda_layer_version.aws_sdk_layer.arn, aws_lambda_layer_version.response-utils-layer.arn]
 }
 
 # Lambda 関数に API Gateway からのアクセスを許可
