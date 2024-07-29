@@ -4,6 +4,5 @@ infra/env1.tfvars
 .infracost
 .vscode
 api/layers/aws-sdk-layer/nodejs/node_modules
-api/layer/*/*.zip
-api/user/*/*.zip
+*.zip
 ~*
