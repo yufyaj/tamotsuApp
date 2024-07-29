@@ -218,6 +218,16 @@ resource "aws_dynamodb_table" "tamotsu_table" {
   }
 
   attribute {
+    name = "TypePK"
+    type = "S"
+  }
+
+  attribute {
+    name = "TypeSK"
+    type = "S"
+  }
+
+  attribute {
     name = "GSI1PK"
     type = "S"
   }
@@ -237,19 +247,11 @@ resource "aws_dynamodb_table" "tamotsu_table" {
     type = "S"
   }
 
-  attribute {
-    name = "GSI3PK"
-    type = "S"
-  }
-
-  attribute {
-    name = "GSI3SK"
-    type = "S"
-  }
-
-  attribute {
-    name = "Type"
-    type = "S"
+  global_secondary_index {
+    name               = "Type"
+    hash_key           = "TypePK"
+    range_key          = "TypeSK"
+    projection_type    = "ALL"
   }
 
   global_secondary_index {
@@ -263,13 +265,6 @@ resource "aws_dynamodb_table" "tamotsu_table" {
     name               = "GSI2"
     hash_key           = "GSI2PK"
     range_key          = "GSI2SK"
-    projection_type    = "ALL"
-  }
-
-  global_secondary_index {
-    name               = "GSI3"
-    hash_key           = "GSI3PK"
-    range_key          = "GSI3SK"
     projection_type    = "ALL"
   }
 
@@ -289,36 +284,130 @@ resource "aws_s3_bucket" "tamotsu_images" {
   bucket = "tamotsu-images"
 }
 
+# S3バケットの作成
+resource "aws_s3_bucket" "tamotsu_webapp" {
+  bucket = "tamotsu-webapp"
+}
+
+# S3バケットの静的ウェブサイトホスティング設定
+resource "aws_s3_bucket_website_configuration" "tamotsu_webapp" {
+  bucket = aws_s3_bucket.tamotsu_webapp.id
+
+  index_document {
+    suffix = "index.html"
+  }
+
+  error_document {
+    key = "index.html"
+  }
+}
+
+# S3 CORSの設定
+resource "aws_s3_bucket_cors_configuration" "tamotsu_webapp" {
+  bucket = aws_s3_bucket.tamotsu_webapp.id
+
+  cors_rule {
+    allowed_headers = ["*"]
+    allowed_methods = ["GET", "HEAD"]
+    allowed_origins = ["https://${var.my_domain}"]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3000
+  }
+}
+
+# CloudFrontディストリビューションの作成
+resource "aws_cloudfront_distribution" "tamotsu_webapp" {
+  origin {
+    domain_name = aws_s3_bucket.tamotsu_webapp.bucket_regional_domain_name
+    origin_id   = "S3-${aws_s3_bucket.tamotsu_webapp.id}"
+  }
+
+  enabled             = true
+  default_root_object = "index.html"
+
+  default_cache_behavior {
+    allowed_methods  = ["GET", "HEAD"]
+    cached_methods   = ["GET", "HEAD"]
+    target_origin_id = "S3-${aws_s3_bucket.tamotsu_webapp.id}"
+
+    forwarded_values {
+      query_string = false
+      cookies {
+        forward = "none"
+      }
+    }
+
+    viewer_protocol_policy = "redirect-to-https"
+    min_ttl                = 0
+    default_ttl            = 3600
+    max_ttl                = 86400
+  }
+
+  custom_error_response {
+    error_code         = 404
+    response_code      = 200
+    response_page_path = "/index.html"
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+}
+
 # 証明書の作成
-resource "aws_acm_certificate" "tamotsu" {
+resource "aws_acm_certificate" "api_tamotsu" {
   domain_name       = "api.${var.my_domain}"
   validation_method = "DNS"
+}
+
+resource "aws_acm_certificate_validation" "api_tamotsu" {
+  certificate_arn = aws_acm_certificate.api_tamotsu.arn
 }
 
 # apiサブドメイン
 resource "aws_api_gateway_domain_name" "tamotsu_app" {
   domain_name       = "api.${var.my_domain}"  # サブドメイン (例: api)
-  regional_certificate_arn = aws_acm_certificate.tamotsu.arn
+  regional_certificate_arn = aws_acm_certificate_validation.api_tamotsu.certificate_arn
   endpoint_configuration {
     types = ["REGIONAL"]
   }
+  depends_on = [aws_acm_certificate_validation.api_tamotsu]
 }
 
 # Route 53のホストゾーンを取得（既存のホストゾーンを使用する場合）
 data "aws_route53_zone" "tamotsu_app" {
-  name = "tamotsu-app.com"
+  name = var.my_domain
 }
 
 # Route 53にAレコードを追加
 resource "aws_route53_record" "record_tamotsu_app" {
   zone_id = data.aws_route53_zone.tamotsu_app.zone_id
-  name    = "api.tamotsu-app.com"
+  name    = "api.${var.my_domain}"
   type    = "A"
 
   alias {
     name                   = aws_api_gateway_domain_name.tamotsu_app.regional_domain_name
     zone_id                = aws_api_gateway_domain_name.tamotsu_app.regional_zone_id
     evaluate_target_health = true
+  }
+}
+
+# Route 53レコードの作成
+resource "aws_route53_record" "tamotsu_webapp" {
+  zone_id = data.aws_route53_zone.tamotsu_app.zone_id
+  name    = var.my_domain
+  type    = "A"
+
+  alias {
+    name                   = aws_cloudfront_distribution.tamotsu_webapp.domain_name
+    zone_id                = aws_cloudfront_distribution.tamotsu_webapp.hosted_zone_id
+    evaluate_target_health = false
   }
 }
 
