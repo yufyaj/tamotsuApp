@@ -5,25 +5,19 @@
     <script>
     function redirect() {
         var urlParams = new URLSearchParams(window.location.search);
-        var token = urlParams.get('token');
+        var email = urlParams.get('email');
+        var verificationCode = urlParams.get('verificationCode');
+        var userType = urlParams.get('userType');
         
         if (/Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
             // Androidデバイスの場合
-            if (isAppInstalled()) {
-                window.location.href = "myapp://verify?token=" + token;
-            } else {
-                window.location.href = "https://play.google.com/store/apps/details?id=com.example.myapp";
-            }
+            window.location.href = "tamotsu://verify?email=" & email & "&verificationCode=" & verificationCode & "&userType=" & userType;
         } else if(/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
             // iOSデバイスの場合
-            if (isAppInstalled()) {
-                window.location.href = "myapp://verify?token=" + token;
-            } else {
-                window.location.href = "https://play.google.com/store/apps/details?id=com.example.myapp";
-            }
+            window.location.href = "tamotsu://verify?email=" & email & "&verificationCode=" & verificationCode & "&userType=" & userType;
         } else {
             // PCの場合
-            window.location.href = "https://tamotsu-app.com/verify?token=" + token;
+            window.location.href = "https://tamotsu-app.com";
         }
     }
 
