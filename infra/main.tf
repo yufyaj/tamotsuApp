@@ -358,6 +358,31 @@ resource "aws_cloudfront_origin_access_control" "default" {
   signing_protocol                  = "sigv4"
 }
 
+# CloudFront関数でindex.html自動付与する
+resource "aws_cloudfront_function" "add_index_html" {
+  name    = "add-index-html"
+  runtime = "cloudfront-js-1.0"
+  comment = "Add index.html to URLs without a file name"
+  publish = true
+  code    = <<-EOT
+function handler(event) {
+    var request = event.request;
+    var uri = request.uri;
+    
+    // Check whether the URI is missing a file name.
+    if (uri.endsWith('/')) {
+        request.uri += 'index.html';
+    } 
+    // Check whether the URI is missing a file extension.
+    else if (!uri.includes('.')) {
+        request.uri += '/index.html';
+    }
+
+    return request;
+}
+EOT
+}
+
 # CloudFrontディストリビューションの作成
 resource "aws_cloudfront_distribution" "tamotsu_webapp" {
   origin {
@@ -380,6 +405,11 @@ resource "aws_cloudfront_distribution" "tamotsu_webapp" {
       cookies {
         forward = "none"
       }
+    }
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.add_index_html.arn
     }
 
     viewer_protocol_policy = "redirect-to-https"
@@ -569,8 +599,9 @@ locals {
       handler  = "verify-email.handler"
       env_vars = {
         COGNITO_USER_POOL_ID = aws_cognito_user_pool.tamotsu_user_pool.id
+        DYNAMODB_TABLE_NAME  = aws_dynamodb_table.tamotsu_table.name
       }
-      http_method = "GET"
+      http_method = ["GET", "POST"]
       parent_id   = aws_api_gateway_resource.auth_resource.id  # 親リソースを設定
     }
   }
@@ -597,11 +628,20 @@ resource "aws_api_gateway_method" "gw_options" {
 
 # 関数用メソッドの作成
 resource "aws_api_gateway_method" "gw_methods" {
-  for_each = local.lambda_functions
+  for_each = merge([
+    for key, lambda in local.lambda_functions : {
+      for method in try(tolist(lambda.http_method), [lambda.http_method]) :
+      "${key}_${method}" => {
+        key = key
+        method = method
+        resource_id = aws_api_gateway_resource.gw_resources[key].id
+      }
+    }
+  ]...)
 
   rest_api_id   = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id   = aws_api_gateway_resource.gw_resources[each.key].id
-  http_method   = each.value.http_method
+  resource_id   = each.value.resource_id
+  http_method   = each.value.method
   authorization = "NONE"
 }
 
@@ -622,15 +662,24 @@ resource "aws_api_gateway_integration" "gw_options_integrations" {
 
 # 関数用メソッドとlambda関数を統合
 resource "aws_api_gateway_integration" "gw_method_integrations" {
-  for_each = local.lambda_functions
+  for_each = merge([
+    for key, lambda in local.lambda_functions : {
+      for method in try(tolist(lambda.http_method), [lambda.http_method]) :
+      "${key}_${method}" => {
+        key = key
+        method = method
+        resource_id = aws_api_gateway_resource.gw_resources[key].id
+      }
+    }
+  ]...)
 
   rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id = aws_api_gateway_resource.gw_resources[each.key].id
-  http_method = each.value.http_method
+  resource_id = each.value.resource_id
+  http_method = each.value.method
 
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
-  uri                     = module.lambda_functions[each.key].function_invoke_arn
+  uri                     = module.lambda_functions[each.value.key].function_invoke_arn
 }
 
 # lambda関数からapi gwへのレスポンス[OPTIONS]
@@ -652,11 +701,20 @@ resource "aws_api_gateway_integration_response" "gw_options_integration_response
 
 # lambda関数からapi gwへのレスポンス
 resource "aws_api_gateway_integration_response" "gw_method_integration_responses" {
-  for_each = local.lambda_functions
+  for_each = merge([
+    for key, lambda in local.lambda_functions : {
+      for method in try(tolist(lambda.http_method), [lambda.http_method]) :
+      "${key}_${method}" => {
+        key = key
+        method = method
+        resource_id = aws_api_gateway_resource.gw_resources[key].id
+      }
+    }
+  ]...)
 
   rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id = aws_api_gateway_resource.gw_resources[each.key].id
-  http_method = aws_api_gateway_method.gw_methods[each.key].http_method
+  resource_id = each.value.resource_id
+  http_method = each.value.method
   status_code = aws_api_gateway_method_response.gw_method_reponses[each.key].status_code
   response_parameters = {
     "method.response.header.Access-Control-Allow-Origin" = "'*'"
@@ -684,11 +742,20 @@ resource "aws_api_gateway_method_response" "gw_options_responses" {
 
 # api gwからのreponse
 resource "aws_api_gateway_method_response" "gw_method_reponses" {
-  for_each = local.lambda_functions
+  for_each = merge([
+    for key, lambda in local.lambda_functions : {
+      for method in try(tolist(lambda.http_method), [lambda.http_method]) :
+      "${key}_${method}" => {
+        key = key
+        method = method
+        resource_id = aws_api_gateway_resource.gw_resources[key].id
+      }
+    }
+  ]...)
 
   rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id = aws_api_gateway_resource.gw_resources[each.key].id
-  http_method = aws_api_gateway_method.gw_methods[each.key].http_method
+  resource_id = each.value.resource_id
+  http_method = each.value.method
   status_code = "200"
   response_parameters = {
     "method.response.header.Access-Control-Allow-Origin" = true
@@ -734,17 +801,26 @@ module "lambda_functions" {
 
 # Lambda 関数に API Gateway からのアクセスを許可
 resource "aws_lambda_permission" "api_gw_lambda_permissions" {
-  for_each = local.lambda_functions
+  for_each = merge([
+    for key, lambda in local.lambda_functions : {
+      for method in try(tolist(lambda.http_method), [lambda.http_method]) :
+      "${key}_${method}" => {
+        key = key
+        method = method
+        resource_id = aws_api_gateway_resource.gw_resources[key].id
+      }
+    }
+  ]...)
 
   depends_on = [
     aws_api_gateway_deployment.tamotsu_deployment,
   ]
-  statement_id  = "AllowExecutionFromAPIGateway"
+  statement_id  = "AllowExecutionFromAPIGateway_${each.key}"
   action        = "lambda:InvokeFunction"
-  function_name = module.lambda_functions[each.key].function_name
+  function_name = module.lambda_functions[each.value.key].function_name
   principal     = "apigateway.amazonaws.com"
 
-  source_arn = "${aws_api_gateway_rest_api.tamotsu_api.execution_arn}/*/${each.value.http_method}${aws_api_gateway_resource.gw_resources[each.key].path}"
+  source_arn = "${aws_api_gateway_rest_api.tamotsu_api.execution_arn}/*/${each.value.method}${aws_api_gateway_resource.gw_resources[each.value.key].path}"
 }
 
 # API Gateway のデプロイ
