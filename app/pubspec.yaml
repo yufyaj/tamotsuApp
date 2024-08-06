@@ -1,5 +1,5 @@
-name: app
-description: "A new Flutter project."
+name: tamotsu
+description: "Tamotsu Project."
 publish_to: 'none'
 version: 0.1.0
 
@@ -9,11 +9,32 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # 状態管理
+  provider: ^6.0.5
+  # ルーティング
+  auto_route: ^7.8.0
+  # HTTP通信
+  http: ^1.1.0
+  # ローカルストレージ
+  shared_preferences: ^2.2.0
+  # UI関連
+  flutter_screenutil: ^5.8.4
+  # コード生成・ユーティリティ
+  json_annotation: ^4.8.1
+  # 暗号化
+  encrypt: ^5.0.1
+  # ディープリンク
+  uni_links: ^0.5.1
+  image_picker: ^1.1.2
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  # コード生成
+  build_runner: ^2.4.6
+  json_serializable: ^6.7.1
+  auto_route_generator: ^7.3.0
 
 flutter:
   uses-material-design: true

@@ -56,7 +56,7 @@ exports.handler = async (event) => {
         await ses.sendEmail({
             Destination: { ToAddresses: [email] },
             Message: {
-                Body: { Text: { Data: `TAMOTSUへご登録頂きありがとうございます。\n\n以下のリンクから確認を完了してください：\nhttps://api.tamotsu-app.com/auth/verify-email?email=${email}&code=${verificationCode}` } },
+                Body: { Text: { Data: `TAMOTSUへご登録頂きありがとうございます。\n\n以下のリンクから確認を完了してください：\nhttps://api.tamotsu-app.com/auth/verify-email?email=${email}&verificationCode=${verificationCode}` } },
                 Subject: { Data: 'TAMOTSUへご登録ありがとうございます' }
             },
             Source: process.env.FROM_EMAIL_ADDRESS
