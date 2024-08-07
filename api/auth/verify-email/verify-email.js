@@ -8,8 +8,6 @@ exports.handler = async (event) => {
     const httpMethod = event.httpMethod;
 
     switch(httpMethod) {
-        // case 'GET':
-        //     return handleGetRequest(event);
         case 'POST':
             return handlePostRequest(event);
         case 'OPTION':
