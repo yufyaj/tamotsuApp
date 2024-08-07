@@ -339,6 +339,7 @@ resource "aws_s3_object" "verify_redirect_page" {
   key          = "verify/index.html"
   source       = "../web/verify/index.html"
   content_type = "text/html; charset=utf-8"
+  cache_control = "no-cache, no-store"
   etag         = filemd5("../web/verify/index.html")
 }
 
@@ -347,6 +348,7 @@ resource "aws_s3_object" "index_page" {
   key          = "index.html"
   source       = "../web/index.html"
   content_type = "text/html; charset=utf-8"
+  cache_control = "no-cache, no-store"
   etag         = filemd5("../web/index.html")
 }
 
@@ -601,7 +603,7 @@ locals {
         COGNITO_USER_POOL_ID = aws_cognito_user_pool.tamotsu_user_pool.id
         DYNAMODB_TABLE_NAME  = aws_dynamodb_table.tamotsu_table.name
       }
-      http_method = ["GET", "POST"]
+      http_method = "POST"
       parent_id   = aws_api_gateway_resource.auth_resource.id  # 親リソースを設定
     }
   }

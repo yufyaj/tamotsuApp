@@ -1,8 +1,11 @@
+import 'dart:io';
+
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
+import 'package:tamotsu/viewmodels/auth_view_model.dart';
+import 'package:tamotsu/viewmodels/user_view_model.dart';
 
 @RoutePage()
 class InitialRegistrationScreen extends StatefulWidget {
@@ -48,8 +51,6 @@ class _InitialRegistrationScreenState extends State<InitialRegistrationScreen> {
   }
 
   Future<void> _initializeData() async {
-    // シミュレートされた遅延
-    // await Future.delayed(Duration(milliseconds: 500));
     setState(() {
       email = widget.email;
       verificationCode = widget.verificationCode;
@@ -61,40 +62,38 @@ class _InitialRegistrationScreenState extends State<InitialRegistrationScreen> {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
 
+      final authViewModel = Provider.of<AuthViewModel>(context, listen: false);
+
+      final success = await authViewModel.verifyEmail(verificationCode, email, password);
+        
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('仮登録が完了しました。メールをご確認ください。')),
+        );
+        // 登録成功後、ログイン画面に戻る
+        // ignore: deprecated_member_use
+        context.router.pop();
+      } else {
+        throw Exception('登録に失敗しました');
+      }
+
       final Map<String, dynamic> data = {
-        'email': email,
-        'verificationCode': verificationCode,
-        'userType': userType,
-        'password': password,
-        'name': nickname,
-        'birthDate': DateTime.now().subtract(Duration(days: age! * 365)).toIso8601String().split('T')[0],
-        'gender': gender,
-        'height': height,
-        'weight': weight,
-        'allergies': allergies,
-        'goal': goal,
-        'dietaryRestrictions': dietaryRestrictions.join(', '),
-        'dislikedFoods': dislikedFoods,
-        'healthConcerns': healthConcerns,
+        "nickname": nickname,
+        "profileImage": profileImage != null ? File(profileImage!.path).readAsBytesSync() : null,
+        "age": age,
+        "gender": gender,
+        "height": height,
+        "weight": weight,
+        "allergies": allergies,
+        "goal": goal,
+        "dietaryRestrictions": dietaryRestrictions,
+        "dislikedFoods": dislikedFoods,
+        "healthConcerns": healthConcerns
       };
 
-      try {
-        final response = await http.post(
-          Uri.parse('https://api.tamotsu-app.com/verify-email'),
-          headers: {'Content-Type': 'application/json'},
-          body: json.encode(data),
-        );
+      final userViewModel = Provider.of<UserViewModel>(context, listen: false);
+      await userViewModel.updateUserProfile(data);
 
-        if (response.statusCode == 200) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('登録が完了しました')));
-          // 登録成功後、ホーム画面に遷移
-          context.router.pushNamed('/home');
-        } else {
-          throw Exception('登録に失敗しました');
-        }
-      } catch (e) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('登録に失敗しました: ${e.toString()}')));
-      }
     }
   }
 
@@ -151,6 +150,13 @@ class _InitialRegistrationScreenState extends State<InitialRegistrationScreen> {
                         },
                         child: Text('プロフィール写真をアップロード'),
                       ),
+                      if (profileImage != null)
+                        Center(
+                          child: CircleAvatar(
+                            radius: 50,
+                            backgroundImage: FileImage(File(profileImage!.path)),
+                          ),
+                        ),
                       TextFormField(
                         decoration: InputDecoration(labelText: '年齢'),
                         keyboardType: TextInputType.number,
@@ -180,9 +186,131 @@ class _InitialRegistrationScreenState extends State<InitialRegistrationScreen> {
                         validator: (value) => value!.isEmpty ? '体重を入力してください' : null,
                         onSaved: (value) => weight = double.parse(value!),
                       ),
-                      // アレルギー情報、目標設定、食事制限、苦手な食材、健康上の懸念事項の入力フィールドは
-                      // 同様の方法で実装できます。紙面の都合上、省略しています。
-
+                      // アレルギー情報
+                      Text('アレルギー情報'),
+                      Wrap(
+                        spacing: 8.0,
+                        children: [
+                          '卵', '乳製品', '小麦', 'そば', '落花生', 'えび', 'かに'
+                        ].map((allergy) {
+                          return FilterChip(
+                            label: Text(allergy),
+                            selected: allergies.contains(allergy),
+                            onSelected: (bool selected) {
+                              setState(() {
+                                if (selected) {
+                                  allergies.add(allergy);
+                                } else {
+                                  allergies.removeWhere((String name) {
+                                    return name == allergy;
+                                  });
+                                }
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                      TextFormField(
+                        decoration: InputDecoration(labelText: 'その他のアレルギー（自由記入）'),
+                        onSaved: (value) {
+                          if (value != null && value.isNotEmpty) {
+                            allergies.add(value);
+                          }
+                        },
+                      ),
+                      // 目標設定
+                      DropdownButtonFormField<String>(
+                        decoration: InputDecoration(labelText: '目標設定'),
+                        items: [
+                          '減量', '筋肉増強', '健康維持', '生活習慣改善', '栄養バランス改善',
+                          '特定の栄養素摂取', '食事制限対応'
+                        ].map((String value) {
+                          return DropdownMenuItem<String>(
+                            value: value,
+                            child: Text(value),
+                          );
+                        }).toList(),
+                        onChanged: (value) => setState(() => goal = value),
+                        validator: (value) => value == null ? '目標を選択してください' : null,
+                      ),
+                      TextFormField(
+                        decoration: InputDecoration(labelText: 'その他の目標（自由記入）'),
+                        onSaved: (value) {
+                          if (value != null && value.isNotEmpty) {
+                            goal = value;
+                          }
+                        },
+                      ),
+                      // 食事制限
+                      Text('食事制限'),
+                      Wrap(
+                        spacing: 8.0,
+                        children: [
+                          'ベジタリアン', 'ビーガン', 'グルテンフリー', '低糖質'
+                        ].map((restriction) {
+                          return FilterChip(
+                            label: Text(restriction),
+                            selected: dietaryRestrictions.contains(restriction),
+                            onSelected: (bool selected) {
+                              setState(() {
+                                if (selected) {
+                                  dietaryRestrictions.add(restriction);
+                                } else {
+                                  dietaryRestrictions.removeWhere((String name) {
+                                    return name == restriction;
+                                  });
+                                }
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                      TextFormField(
+                        decoration: InputDecoration(labelText: 'その他の食事制限（自由記入）'),
+                        onSaved: (value) {
+                          if (value != null && value.isNotEmpty) {
+                            dietaryRestrictions.add(value);
+                          }
+                        },
+                      ),
+                      // 苦手な食材
+                      TextFormField(
+                        decoration: InputDecoration(labelText: '苦手な食材（自由記入）'),
+                        onSaved: (value) => dislikedFoods = value!,
+                      ),
+                      // 健康上の懸念事項
+                      Text('健康上の懸念事項'),
+                      Wrap(
+                        spacing: 8.0,
+                        children: [
+                          '高血圧', '糖尿病', '高コレステロール'
+                        ].map((concern) {
+                          return FilterChip(
+                            label: Text(concern),
+                            selected: healthConcerns.contains(concern),
+                            onSelected: (bool selected) {
+                              setState(() {
+                                if (selected) {
+                                  healthConcerns.add(concern);
+                                } else {
+                                  healthConcerns.removeWhere((String name) {
+                                    return name == concern;
+                                  });
+                                }
+                              });
+                            },
+                          );
+                        }).toList(),
+                      ),
+                      TextFormField(
+                        decoration: InputDecoration(labelText: 'その他の健康上の懸念事項（自由記入）'),
+                        onSaved: (value) {
+                          if (value != null && value.isNotEmpty) {
+                            healthConcerns.add(value);
+                          }
+                        },
+                      ),
+                      SizedBox(height: 20),
                       ElevatedButton(
                         onPressed: submitForm,
                         child: Text('次へ'),

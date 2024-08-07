@@ -11,20 +11,14 @@
         
         if (/Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
             // Androidデバイスの場合
-            window.location.href = "tamotsu://verify?email=" & email & "&verificationCode=" & verificationCode & "&userType=" & userType;
+            location.href = "tamotsu://verify?email=" + encodeURIComponent(email) + "&verificationCode=" + encodeURIComponent(verificationCode) + "&userType=" + encodeURIComponent(userType);
         } else if(/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
             // iOSデバイスの場合
-            window.location.href = "tamotsu://verify?email=" & email & "&verificationCode=" & verificationCode & "&userType=" & userType;
+            location.href = "tamotsu://verify?email=" + encodeURIComponent(email) + "&verificationCode=" + encodeURIComponent(verificationCode) + "&userType=" + encodeURIComponent(userType);
         } else {
             // PCの場合
-            window.location.href = "https://tamotsu-app.com";
+            location.href = "https://tamotsu-app.com";
         }
-    }
-
-    function isAppInstalled() {
-        // アプリがインストールされているかどうかを確認するロジック
-        // これは簡略化された例で、実際の実装はより複雑になる可能性があります
-        return false;
     }
 
     // ページ読み込み時にリダイレクト関数を実行

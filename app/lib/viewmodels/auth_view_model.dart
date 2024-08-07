@@ -1,83 +1,111 @@
-import 'package:flutter/foundation.dart';
-import '../services/auth_service.dart';
+import 'package:flutter/foundation.dart'; // ChangeNotifierを使用するためのパッケージをインポート
+import '../services/auth_service.dart'; // AuthServiceをインポート
 
 class AuthViewModel extends ChangeNotifier {
-  final AuthService _authService;
-  String? _token;
-  bool _isLoading = false;
-  String? _error;
+  final AuthService _authService; // AuthServiceのインスタンス
+  String? _token; // 認証トークンを保持する変数
+  bool _isLoading = false; // ローディング状態を示すフラグ
+  String? _error; // エラーメッセージを保持する変数
 
+  // コンストラクタでAuthServiceのインスタンスを受け取る
   AuthViewModel({required AuthService authService}) : _authService = authService;
 
-  String? get token => _token;
+  // ローディング状態を取得するゲッター
   bool get isLoading => _isLoading;
+
+  // エラーメッセージを取得するゲッター
   String? get error => _error;
+
+  // 認証状態を取得するゲッター
   bool get isAuthenticated => _token != null;
 
+  // ユーザー登録メソッド
   Future<bool> register(String email, String userType) async {
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
+    _isLoading = true; // ローディング状態をtrueに設定
+    _error = null; // エラーメッセージをクリア
+    notifyListeners(); // リスナーに通知
 
     try {
-      bool result = await _authService.register(email, userType);
-      _isLoading = false;
-      notifyListeners();
-      return result;
+      bool result = await _authService.register(email, userType); // AuthServiceを使用してユーザー登録
+      _isLoading = false; // ローディング状態をfalseに設定
+      notifyListeners(); // リスナーに通知
+      return result; // 登録結果を返す
     } catch (e) {
-      _error = e.toString();
-      _isLoading = false;
-      notifyListeners();
-      return false;
+      _error = e.toString(); // エラーメッセージを設定
+      _isLoading = false; // ローディング状態をfalseに設定
+      notifyListeners(); // リスナーに通知
+      return false; // エラーの場合はfalseを返す
     }
   }
 
+  // ログインメソッド
   Future<bool> login(String username, String password) async {
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
+    _isLoading = true; // ローディング状態をtrueに設定
+    _error = null; // エラーメッセージをクリア
+    notifyListeners(); // リスナーに通知
 
     try {
-      _token = await _authService.login(username, password);
-      _isLoading = false;
-      notifyListeners();
-      return true;
+      _token = await _authService.login(username, password); // AuthServiceを使用してログイン
+      _isLoading = false; // ローディング状態をfalseに設定
+      notifyListeners(); // リスナーに通知
+      return true; // ログイン成功の場合はtrueを返す
     } catch (e) {
-      _error = e.toString();
-      _isLoading = false;
-      notifyListeners();
-      return false;
+      _error = e.toString(); // エラーメッセージを設定
+      _isLoading = false; // ローディング状態をfalseに設定
+      notifyListeners(); // リスナーに通知
+      return false; // エラーの場合はfalseを返す
     }
   }
 
+  // メール認証メソッド
+  Future<bool> verifyEmail(String verificationCode, String email, String password) async {
+    _isLoading = true; // ローディング状態をtrueに設定
+    _error = null; // エラーメッセージをクリア
+    notifyListeners(); // リスナーに通知
+
+    try {
+      await _authService.verifyEmail(verificationCode, email, password); // AuthServiceを使用してメール認証
+      _isLoading = false; // ローディング状態をfalseに設定
+      notifyListeners(); // リスナーに通知
+      return true; // 認証成功の場合はtrueを返す
+    } catch (e) {
+      _error = e.toString(); // エラーメッセージを設定
+      _isLoading = false; // ローディング状態をfalseに設定
+      notifyListeners(); // リスナーに通知
+      return false; // エラーの場合はfalseを返す
+    }
+  }
+
+  // ログアウトメソッド
   Future<void> logout() async {
-    _isLoading = true;
-    notifyListeners();
+    _isLoading = true; // ローディング状態をtrueに設定
+    notifyListeners(); // リスナーに通知
 
     try {
-      await _authService.logout();
-      _token = null;
-      _isLoading = false;
-      notifyListeners();
+      await _authService.logout(); // AuthServiceを使用してログアウト
+      _token = null; // トークンをクリア
+      _isLoading = false; // ローディング状態をfalseに設定
+      notifyListeners(); // リスナーに通知
     } catch (e) {
-      _error = e.toString();
-      _isLoading = false;
-      notifyListeners();
+      _error = e.toString(); // エラーメッセージを設定
+      _isLoading = false; // ローディング状態をfalseに設定
+      notifyListeners(); // リスナーに通知
     }
   }
 
+  // 認証状態をチェックするメソッド
   Future<void> checkAuthStatus() async {
-    _isLoading = true;
-    notifyListeners();
+    _isLoading = true; // ローディング状態をtrueに設定
+    notifyListeners(); // リスナーに通知
 
     try {
-      _token = await _authService.getStoredToken();
-      _isLoading = false;
-      notifyListeners();
+      _token = await _authService.getStoredToken(); // 保存されたトークンを取得
+      _isLoading = false; // ローディング状態をfalseに設定
+      notifyListeners(); // リスナーに通知
     } catch (e) {
-      _error = e.toString();
-      _isLoading = false;
-      notifyListeners();
+      _error = e.toString(); // エラーメッセージを設定
+      _isLoading = false; // ローディング状態をfalseに設定
+      notifyListeners(); // リスナーに通知
     }
   }
 }

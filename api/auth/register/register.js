@@ -35,7 +35,7 @@ exports.handler = async (event) => {
             TableName: 'tamotsu-table',
             Item: {
                 PK: `EMAIL#${email}`,
-                SK: `METADATA#${timestamp}`,
+                SK: `TEMP_USER`,
                 TypePK: `TYPE#TEMP_USER`,
                 TypeSK: `EMAIL#${email}`,
                 GSI1PK: `STATUS#UNVERIFIED`,
@@ -56,7 +56,7 @@ exports.handler = async (event) => {
         await ses.sendEmail({
             Destination: { ToAddresses: [email] },
             Message: {
-                Body: { Text: { Data: `TAMOTSUへご登録頂きありがとうございます。\n\n以下のリンクから確認を完了してください：\nhttps://api.tamotsu-app.com/auth/verify-email?email=${email}&verificationCode=${verificationCode}` } },
+                Body: { Text: { Data: `TAMOTSUへご登録頂きありがとうございます。\n\n以下のリンクから確認を完了してください：\nhttps://tamotsu-app.com/verify?email=${email}&verificationCode=${verificationCode}` } },
                 Subject: { Data: 'TAMOTSUへご登録ありがとうございます' }
             },
             Source: process.env.FROM_EMAIL_ADDRESS

@@ -1,1 +1,19 @@
-準備中です
+<p>準備中です</p>
+<p id="message"></p>
+<p id="message2"></p>
+<script>
+if (/Android|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)) {
+    // Androidデバイスの場合
+    document.getElementById('message2').innerText = "Android";
+} else if(/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+    // iOSデバイスの場合
+    document.getElementById('message2').innerText = "iOS";
+} else {
+    // PCの場合
+    document.getElementById('message2').innerText = "PC";
+}
+</script>
+<a href="tamotsu://verify?email=example@email.com&verificationCode=123456&userType=user">TESTリンク</a>
+<script>
+    document.getElementById('message').innerText = navigator.userAgent;
+</script>
