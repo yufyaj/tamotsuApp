@@ -27,6 +27,25 @@ variable "public_subnet_cidr_block" {
 variable "send_mail_address" {
   default = "no-reply@tamotsu-app.com"
 }
+variable "db_user" {
+  default = "admin"
+}
+variable "db_password" {
+  default = "tamotsuPassw0rd"
+}
+variable "db_name" {
+  default = "tamotsu"
+}
+# 複数のアベイラビリティゾーンを使用するための設定
+variable "availability_zones" {
+  default = ["ap-northeast-1a", "ap-northeast-1c"]
+}
+data "http" "my_ip" {
+  url = "http://checkip.amazonaws.com/"
+}
+locals {
+  my_ip = trim(data.http.my_ip.response_body, "\n")
+}
 
 # AWSプロバイダーの設定
 provider "aws" {
@@ -45,6 +64,8 @@ provider "aws" {
 # VPCの設定
 resource "aws_vpc" "tamotsu_vpc" {
   cidr_block = var.vpc_cidr_block
+  enable_dns_support   = true
+  enable_dns_hostnames = true
   tags       = {
     Name = "tamotsu-vpc"
   }
@@ -61,12 +82,32 @@ resource "aws_subnet" "public_subnet" {
 }
 
 # プライベートサブネットの設定
-resource "aws_subnet" "private_subnet" {
+resource "aws_subnet" "private_subnet_1" {
   vpc_id     = aws_vpc.tamotsu_vpc.id
   cidr_block = "10.0.2.0/24"  # パブリックサブネットとは異なるCIDRブロックを使用
-  availability_zone = var.availability_zone
+  availability_zone = var.availability_zones[0]
   tags = {
-    Name = "tamotsu-private-subnet"
+    Name = "tamotsu-private-subnet-1"
+  }
+}
+
+# プライベートサブネットの設定
+resource "aws_subnet" "private_subnet_2" {
+  vpc_id     = aws_vpc.tamotsu_vpc.id
+  cidr_block = "10.0.3.0/24"  # パブリックサブネットとは異なるCIDRブロックを使用
+  availability_zone = var.availability_zones[1]
+  tags = {
+    Name = "tamotsu-private-subnet-2"
+  }
+}
+
+# DBサブネットグループ
+resource "aws_db_subnet_group" "aurora_subnet_group" {
+  name       = "aurora-db-subnet-group"
+  subnet_ids = [aws_subnet.private_subnet_1.id, aws_subnet.private_subnet_2.id]
+
+  tags = {
+    Name = "Aurora-DB-Subnet-Group"
   }
 }
 
@@ -87,6 +128,14 @@ resource "aws_security_group" "lambda_sg" {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  
+  ingress {
+    from_port   = 3306
+    to_port     = 3306
+    protocol    = "tcp"
+    // cidr_blocks = ["${local.my_ip}/32", "${aws_eip.nat_eip.public_ip}/32", "35.74.21.73/32"]  # 自分のIPアドレス, NATゲートウェイ, CloudShell
     cidr_blocks = ["0.0.0.0/0"]
   }
 
@@ -128,8 +177,8 @@ locals {
     s3_full_access           = {
       policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
     }
-    dynamodb_full_access     = {
-      policy_arn = "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess"
+    rds_data_access = {
+      policy_arn = "arn:aws:iam::aws:policy/AmazonRDSDataFullAccess"
     }
     ec2_full_access          = {
       policy_arn = "arn:aws:iam::aws:policy/AmazonEC2FullAccess"
@@ -186,14 +235,25 @@ resource "aws_cognito_user_pool" "tamotsu_user_pool" {
 
   # カスタムフィールドの設定
   schema {
-    name                = "verificationCode"
     attribute_data_type = "String"
-    mutable             = true
+    name                = "userId"
     required            = false
+    mutable             = true
 
     string_attribute_constraints {
       min_length = 1
-      max_length = 256
+      max_length = 10
+    }
+  }
+  schema {
+    attribute_data_type = "String"
+    name                = "nutritionistId"
+    required            = false
+    mutable             = true
+
+    string_attribute_constraints {
+      min_length = 1
+      max_length = 10
     }
   }
 }
@@ -203,86 +263,54 @@ resource "aws_cognito_user_pool_client" "client" {
   name         = "tamotsu-user-pool-client"
   user_pool_id = aws_cognito_user_pool.tamotsu_user_pool.id
 
-  # USER_PASSWORD_AUTH フローを有効にする
-  explicit_auth_flows = ["ALLOW_USER_PASSWORD_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
+  # 認証フローの設定
+  explicit_auth_flows = [
+    "ALLOW_USER_PASSWORD_AUTH",
+    "ALLOW_REFRESH_TOKEN_AUTH",
+    "ALLOW_USER_SRP_AUTH",
+    "ALLOW_ADMIN_USER_PASSWORD_AUTH"
+  ]
+
+  # OAuth設定
+  allowed_oauth_flows = ["code", "implicit"]
+  allowed_oauth_scopes = ["email", "openid", "profile"]
+  supported_identity_providers = ["COGNITO"]
+
+  # コールバックURLとログアウトURLの設定
+  callback_urls = ["https://tamotsu-app.com/callback", "http://localhost:3000/callback"]
+  logout_urls = ["https://tamotsu-app.com/logout", "http://localhost:3000/logout"]
+
+  generate_secret = false
+  prevent_user_existence_errors = "ENABLED"
 }
 
-# dynamodbの作成
-resource "aws_dynamodb_table" "tamotsu_table" {
-  name           = "tamotsu-table"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "PK"
-  range_key      = "SK"
-
-  attribute {
-    name = "PK"
-    type = "S"
-  }
-
-  attribute {
-    name = "SK"
-    type = "S"
-  }
-
-  attribute {
-    name = "TypePK"
-    type = "S"
-  }
-
-  attribute {
-    name = "TypeSK"
-    type = "S"
-  }
-
-  attribute {
-    name = "GSI1PK"
-    type = "S"
-  }
-
-  attribute {
-    name = "GSI1SK"
-    type = "S"
-  }
-
-  attribute {
-    name = "GSI2PK"
-    type = "S"
-  }
-
-  attribute {
-    name = "GSI2SK"
-    type = "S"
-  }
-
-  global_secondary_index {
-    name               = "Type"
-    hash_key           = "TypePK"
-    range_key          = "TypeSK"
-    projection_type    = "ALL"
-  }
-
-  global_secondary_index {
-    name               = "GSI1"
-    hash_key           = "GSI1PK"
-    range_key          = "GSI1SK"
-    projection_type    = "ALL"
-  }
-
-  global_secondary_index {
-    name               = "GSI2"
-    hash_key           = "GSI2PK"
-    range_key          = "GSI2SK"
-    projection_type    = "ALL"
-  }
-
-  ttl {
-    attribute_name = "TTL"
-    enabled        = true
-  }
+# auroraの作成
+resource "aws_rds_cluster" "aurora_cluster" {
+  cluster_identifier = "aurora-cluster"
+  engine             = "aurora-mysql"
+  engine_version     = "8.0.mysql_aurora.3.04.0"
+  master_username    = var.db_user
+  master_password    = var.db_password
+  db_subnet_group_name = aws_db_subnet_group.aurora_subnet_group.name
+  vpc_security_group_ids = [aws_security_group.lambda_sg.id]
+  database_name           = var.db_name  # データベース名をここで指定
 
   tags = {
-    Name        = "tamotsu-table"
-    Environment = "production"
+    Name = "Aurora-DB-Cluster"
+  }
+}
+
+resource "aws_rds_cluster_instance" "aurora_cluster_instance" {
+  count                = 2
+  identifier           = "aurora-instance-${count.index}"
+  cluster_identifier   = aws_rds_cluster.aurora_cluster.id
+  instance_class       = "db.t3.medium"
+  engine               = "aurora-mysql"
+  db_subnet_group_name = aws_db_subnet_group.aurora_subnet_group.name
+  publicly_accessible  = true
+
+  tags = {
+    Name = "Aurora-DB-Instance-${count.index}"
   }
 }
 
@@ -576,70 +604,112 @@ resource "aws_api_gateway_resource" "chat_resource" {
 # lambdaの定義
 locals {
   lambda_functions = {
-    register = {
-      filename = "../api/auth/register/register.zip"
-      handler  = "register.handler"
-      env_vars = {
-        FROM_EMAIL_ADDRESS          = var.send_mail_address
-        COGNITO_USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.client.id
-        COGNITO_USER_POOL_ID        = aws_cognito_user_pool.tamotsu_user_pool.id
+    auth = {
+      register = {
+        filename = "../api/auth/register/register.zip"
+        handler  = "register.handler"
+        env_vars = {
+          FROM_EMAIL_ADDRESS          = var.send_mail_address
+          COGNITO_USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.client.id
+          COGNITO_USER_POOL_ID        = aws_cognito_user_pool.tamotsu_user_pool.id
+        }
+        http_method = "POST"
+        parent_id   = aws_api_gateway_resource.auth_resource.id  # 親リソースを設定
       }
-      http_method = "POST"
-      parent_id   = aws_api_gateway_resource.auth_resource.id  # 親リソースを設定
+      login = {
+        filename = "../api/auth/login/login.zip"
+        handler  = "login.handler"
+        env_vars = {
+          COGNITO_USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.client.id
+        }
+        http_method = "POST"
+        parent_id   = aws_api_gateway_resource.auth_resource.id  # 親リソースを設定
+      }
+      verify-email = {
+        filename = "../api/auth/verify-email/verify-email.zip"
+        handler  = "verify-email.handler"
+        env_vars = {
+          COGNITO_USER_POOL_ID = aws_cognito_user_pool.tamotsu_user_pool.id
+          COGNITO_USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.client.id
+        }
+        http_method = "POST"
+        parent_id   = aws_api_gateway_resource.auth_resource.id  # 親リソースを設定
+      }
     }
-    login = {
-      filename = "../api/auth/login/login.zip"
-      handler  = "login.handler"
-      env_vars = {
-        COGNITO_USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.client.id
+    users = {
+      profile = {
+        filename = "../api/users/profile/profile.zip"
+        handler  = "profile.handler"
+        env_vars = {
+          COGNITO_USER_POOL_ID = aws_cognito_user_pool.tamotsu_user_pool.id,
+          S3_BUCKET_NAME = aws_s3_bucket.tamotsu_images.id 
+        }
+        http_method = ["PUT", "GET"]
+        parent_id   = aws_api_gateway_resource.users_resource.id  # 親リソースを設定
       }
-      http_method = "POST"
-      parent_id   = aws_api_gateway_resource.auth_resource.id  # 親リソースを設定
     }
-    verify-email = {
-      filename = "../api/auth/verify-email/verify-email.zip"
-      handler  = "verify-email.handler"
-      env_vars = {
-        COGNITO_USER_POOL_ID = aws_cognito_user_pool.tamotsu_user_pool.id
-        DYNAMODB_TABLE_NAME  = aws_dynamodb_table.tamotsu_table.name
+    nutritionists = {
+      profile = {
+        filename = "../api/nutritionists/profile/profile.zip"
+        handler  = "profile.handler"
+        env_vars = {
+          COGNITO_USER_POOL_ID = aws_cognito_user_pool.tamotsu_user_pool.id,
+          S3_BUCKET_NAME = aws_s3_bucket.tamotsu_images.id 
+        }
+        http_method = ["PUT", "GET"]
+        parent_id   = aws_api_gateway_resource.nutritionists_resource.id  # 親リソースを設定
       }
-      http_method = "POST"
-      parent_id   = aws_api_gateway_resource.auth_resource.id  # 親リソースを設定
     }
   }
 }
 
 # 関数のリソースの作成
 resource "aws_api_gateway_resource" "gw_resources" {
-  for_each = local.lambda_functions
+  for_each = merge([
+    for category, functions in local.lambda_functions : {
+      for key, config in functions : "${category}_${key}" => {
+        path_part  = key
+        parent_id  = config.parent_id
+      }
+    }
+  ]...)
 
   rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
-  parent_id   = each.value.parent_id
-  path_part   = each.key
+  parent_id = each.value.parent_id
+  path_part = each.value.path_part
 }
+
 
 # 関数用メソッド[OPTIONS]の作成
 resource "aws_api_gateway_method" "gw_options" {
-  for_each = local.lambda_functions
-
+  for_each = merge([
+    for category, functions in local.lambda_functions : {
+      for key, config in functions : "${category}_${key}" => {
+        resource_id = aws_api_gateway_resource.gw_resources["${category}_${key}"].id
+      }
+    }
+  ]...)
   rest_api_id   = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id   = aws_api_gateway_resource.gw_resources[each.key].id
+  resource_id   = each.value.resource_id
   http_method   = "OPTIONS"
   authorization = "NONE"
 }
 
 # 関数用メソッドの作成
 resource "aws_api_gateway_method" "gw_methods" {
-  for_each = merge([
-    for key, lambda in local.lambda_functions : {
-      for method in try(tolist(lambda.http_method), [lambda.http_method]) :
-      "${key}_${method}" => {
-        key = key
-        method = method
-        resource_id = aws_api_gateway_resource.gw_resources[key].id
-      }
-    }
-  ]...)
+  for_each = merge(flatten([
+    for category, functions in local.lambda_functions : [
+      for key, config in functions : 
+        {
+          for method in try(tolist(config.http_method), [config.http_method]) :
+            "${category}_${key}_${method}" => {
+              key         = key
+              method      = method
+              resource_id = aws_api_gateway_resource.gw_resources["${category}_${key}"].id
+            }
+        }
+    ]
+  ])...)
 
   rest_api_id   = aws_api_gateway_rest_api.tamotsu_api.id
   resource_id   = each.value.resource_id
@@ -649,47 +719,58 @@ resource "aws_api_gateway_method" "gw_methods" {
 
 # 関数用メソッド[OPTIONS]とlambda関数を統合
 resource "aws_api_gateway_integration" "gw_options_integrations" {
-  for_each = local.lambda_functions
-
-  rest_api_id             = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id             = aws_api_gateway_resource.gw_resources[each.key].id
-  http_method             = aws_api_gateway_method.gw_options[each.key].http_method
-  type                    = "MOCK"
+  for_each = merge([
+    for category, functions in local.lambda_functions : {
+      for key, config in functions : "${category}_${key}" => {
+        key = key
+        resource_id = aws_api_gateway_resource.gw_resources["${category}_${key}"].id
+      }
+    }
+  ]...)
+  rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
+  resource_id = each.value.resource_id
+  http_method = aws_api_gateway_method.gw_options[each.key].http_method
+  type        = "MOCK"
   request_templates = {
-    "application/json" = jsonencode({
-      statusCode = 200
-    })
+    "application/json" = jsonencode({ statusCode = 200 })
   }
 }
 
 # 関数用メソッドとlambda関数を統合
 resource "aws_api_gateway_integration" "gw_method_integrations" {
-  for_each = merge([
-    for key, lambda in local.lambda_functions : {
-      for method in try(tolist(lambda.http_method), [lambda.http_method]) :
-      "${key}_${method}" => {
-        key = key
-        method = method
-        resource_id = aws_api_gateway_resource.gw_resources[key].id
-      }
-    }
-  ]...)
-
-  rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id = each.value.resource_id
-  http_method = each.value.method
-
+  for_each = merge(flatten([
+    for category, functions in local.lambda_functions : [
+      for key, config in functions : 
+        {
+          for method in try(tolist(config.http_method), [config.http_method]) :
+            "${category}_${key}_${method}" => {
+              key         = key
+              category    = category
+              method      = method
+              resource_id = aws_api_gateway_resource.gw_resources["${category}_${key}"].id
+            }
+        }
+    ]
+  ])...)
+  rest_api_id             = aws_api_gateway_rest_api.tamotsu_api.id
+  resource_id             = each.value.resource_id
+  http_method             = each.value.method
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
-  uri                     = module.lambda_functions[each.value.key].function_invoke_arn
+  uri                     = module.lambda_functions["${each.value.category}_${each.value.key}"].function_invoke_arn
 }
 
 # lambda関数からapi gwへのレスポンス[OPTIONS]
 resource "aws_api_gateway_integration_response" "gw_options_integration_responses" {
-  for_each = local.lambda_functions
-
+  for_each = merge([
+    for category, functions in local.lambda_functions : {
+      for key, config in functions : "${category}_${key}" => {
+        resource_id = aws_api_gateway_resource.gw_resources["${category}_${key}"].id
+      }
+    }
+  ]...)
   rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id = aws_api_gateway_resource.gw_resources[each.key].id
+  resource_id = each.value.resource_id
   http_method = aws_api_gateway_method.gw_options[each.key].http_method
   status_code = aws_api_gateway_method_response.gw_options_responses[each.key].status_code
   response_parameters = {
@@ -697,22 +778,24 @@ resource "aws_api_gateway_integration_response" "gw_options_integration_response
     "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS,POST,PUT'",
     "method.response.header.Access-Control-Allow-Origin"  = "'*'"
   }
-
   depends_on = [aws_api_gateway_integration.gw_options_integrations]
 }
 
 # lambda関数からapi gwへのレスポンス
 resource "aws_api_gateway_integration_response" "gw_method_integration_responses" {
-  for_each = merge([
-    for key, lambda in local.lambda_functions : {
-      for method in try(tolist(lambda.http_method), [lambda.http_method]) :
-      "${key}_${method}" => {
-        key = key
-        method = method
-        resource_id = aws_api_gateway_resource.gw_resources[key].id
-      }
-    }
-  ]...)
+  for_each = merge(flatten([
+    for category, functions in local.lambda_functions : [
+      for key, config in functions : 
+        {
+          for method in try(tolist(config.http_method), [config.http_method]) :
+            "${category}_${key}_${method}" => {
+              category    = category
+              method      = method
+              resource_id = aws_api_gateway_resource.gw_resources["${category}_${key}"].id
+            }
+        }
+    ]
+  ])...)
 
   rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
   resource_id = each.value.resource_id
@@ -721,14 +804,24 @@ resource "aws_api_gateway_integration_response" "gw_method_integration_responses
   response_parameters = {
     "method.response.header.Access-Control-Allow-Origin" = "'*'"
   }
+
+  depends_on = [
+    aws_api_gateway_integration.gw_method_integrations,
+    aws_api_gateway_method_response.gw_method_reponses
+  ]
 }
 
 # api gwからのreponse[OPTIONS]
 resource "aws_api_gateway_method_response" "gw_options_responses" {
-  for_each = local.lambda_functions
-
+  for_each = merge([
+    for category, functions in local.lambda_functions : {
+      for key, config in functions : "${category}_${key}" => {
+        resource_id = aws_api_gateway_resource.gw_resources["${category}_${key}"].id
+      }
+    }
+  ]...)
   rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
-  resource_id = aws_api_gateway_resource.gw_resources[each.key].id
+  resource_id = each.value.resource_id
   http_method = aws_api_gateway_method.gw_options[each.key].http_method
   status_code = "200"
   response_models = {
@@ -744,24 +837,30 @@ resource "aws_api_gateway_method_response" "gw_options_responses" {
 
 # api gwからのreponse
 resource "aws_api_gateway_method_response" "gw_method_reponses" {
-  for_each = merge([
-    for key, lambda in local.lambda_functions : {
-      for method in try(tolist(lambda.http_method), [lambda.http_method]) :
-      "${key}_${method}" => {
-        key = key
-        method = method
-        resource_id = aws_api_gateway_resource.gw_resources[key].id
-      }
-    }
-  ]...)
+  for_each = merge(flatten([
+    for category, functions in local.lambda_functions : [
+      for key, config in functions : 
+        {
+          for method in try(tolist(config.http_method), [config.http_method]) :
+            "${category}_${key}_${method}" => {
+              category    = category
+              method      = method
+              resource_id = aws_api_gateway_resource.gw_resources["${category}_${key}"].id
+            }
+        }
+    ]
+  ])...)
 
   rest_api_id = aws_api_gateway_rest_api.tamotsu_api.id
   resource_id = each.value.resource_id
   http_method = each.value.method
   status_code = "200"
+
   response_parameters = {
     "method.response.header.Access-Control-Allow-Origin" = true
   }
+
+  depends_on = [aws_api_gateway_method.gw_methods]
 }
 
 # レイヤーの定義
@@ -769,10 +868,20 @@ resource "aws_lambda_layer_version" "response-utils-layer" {
   filename   = "../api/layers/response-utils-layer/response-utils-layer.zip"
   layer_name = "response-utils-layer-layer"
 
-  compatible_runtimes = ["nodejs14.x", "nodejs16.x", "nodejs18.x"]
+  compatible_runtimes = ["nodejs14.x", "nodejs16.x", "nodejs18.x", "nodejs20.x"]
 
   # レイヤーが更新されたときに新しいバージョンを作成
   source_code_hash = filebase64sha256("../api/layers/response-utils-layer/response-utils-layer.zip")
+}
+
+resource "aws_lambda_layer_version" "mysql2-layer" {
+  filename   = "../api/layers/mysql2-layer/mysql2-layer.zip"
+  layer_name = "mysql2-layer-layer"
+
+  compatible_runtimes = ["nodejs14.x", "nodejs16.x", "nodejs18.x", "nodejs20.x"]
+
+  # レイヤーが更新されたときに新しいバージョンを作成
+  source_code_hash = filebase64sha256("../api/layers/mysql2-layer/mysql2-layer.zip")
 }
 
 # Lambdaレイヤーの取得
@@ -783,46 +892,58 @@ data "aws_lambda_layer_version" "aws_sdk_layer" {
 
 # Lambda関数実装
 module "lambda_functions" {
-  source   = "./modules/lambda"
-  for_each = local.lambda_functions
-
+  source = "./modules/lambda"
+  for_each = merge([
+    for category, functions in local.lambda_functions : {
+      for key, config in functions : "${category}_${key}" => config
+    }
+  ]...)
   function_name = "tamotsu-${each.key}-function"
-  filename      = each.value.filename
-  handler       = each.value.handler
-  runtime       = "nodejs20.x"
-  role_arn      = aws_iam_role.lambda_role.arn
-
+  filename = each.value.filename
+  handler = each.value.handler
+  runtime = "nodejs20.x"
+  role_arn = aws_iam_role.lambda_role.arn
   vpc_config = {
-    subnet_ids         = [aws_subnet.private_subnet.id]
+    subnet_ids = [aws_subnet.private_subnet_1.id]
     security_group_ids = [aws_security_group.lambda_sg.id]
   }
-
-  environment_variables = each.value.env_vars
-  layer_arns            = [data.aws_lambda_layer_version.aws_sdk_layer.arn, aws_lambda_layer_version.response-utils-layer.arn]
+  environment_variables = merge(
+    each.value.env_vars,
+    {
+      DB_HOST = aws_rds_cluster.aurora_cluster.endpoint,
+      DB_USER = var.db_user,
+      DB_PASSWORD = var.db_password,
+      DB_NAME = var.db_name
+    }
+  )
+  layer_arns = [
+    data.aws_lambda_layer_version.aws_sdk_layer.arn,
+    aws_lambda_layer_version.response-utils-layer.arn,
+    aws_lambda_layer_version.mysql2-layer.arn
+  ]
 }
 
 # Lambda 関数に API Gateway からのアクセスを許可
 resource "aws_lambda_permission" "api_gw_lambda_permissions" {
-  for_each = merge([
-    for key, lambda in local.lambda_functions : {
-      for method in try(tolist(lambda.http_method), [lambda.http_method]) :
-      "${key}_${method}" => {
-        key = key
-        method = method
-        resource_id = aws_api_gateway_resource.gw_resources[key].id
-      }
-    }
-  ]...)
-
-  depends_on = [
-    aws_api_gateway_deployment.tamotsu_deployment,
-  ]
+  for_each = merge(flatten([
+    for category, functions in local.lambda_functions : [
+      for key, config in functions : 
+        {
+          for method in try(tolist(config.http_method), [config.http_method]) :
+            "${category}_${key}_${method}" => {
+              key         = key
+              category    = category
+              method      = method
+              resource_id = aws_api_gateway_resource.gw_resources["${category}_${key}"].id
+            }
+        }
+    ]
+  ])...)
   statement_id  = "AllowExecutionFromAPIGateway_${each.key}"
   action        = "lambda:InvokeFunction"
-  function_name = module.lambda_functions[each.value.key].function_name
+  function_name = module.lambda_functions["${each.value.category}_${each.value.key}"].function_name
   principal     = "apigateway.amazonaws.com"
-
-  source_arn = "${aws_api_gateway_rest_api.tamotsu_api.execution_arn}/*/${each.value.method}${aws_api_gateway_resource.gw_resources[each.value.key].path}"
+  source_arn    = "${aws_api_gateway_rest_api.tamotsu_api.execution_arn}/*/${each.value.method}${aws_api_gateway_resource.gw_resources["${each.value.category}_${each.value.key}"].path}"
 }
 
 # API Gateway のデプロイ
@@ -839,6 +960,10 @@ resource "aws_api_gateway_deployment" "tamotsu_deployment" {
   triggers = {
     redeployment = sha1(jsonencode(aws_api_gateway_integration.gw_method_integrations))
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # API Gatewayのマッピングを作成
@@ -846,6 +971,10 @@ resource "aws_api_gateway_base_path_mapping" "tamotsu_app" {
   api_id      = aws_api_gateway_rest_api.tamotsu_api.id
   stage_name  = aws_api_gateway_deployment.tamotsu_deployment.stage_name
   domain_name = aws_api_gateway_domain_name.tamotsu_app.domain_name
+
+  lifecycle {
+    create_before_destroy = true
+  }
 
   depends_on = [aws_api_gateway_deployment.tamotsu_deployment]
 }
@@ -912,6 +1041,6 @@ resource "aws_route_table" "private_route_table" {
 }
 
 resource "aws_route_table_association" "private_route_assoc" {
-  subnet_id      = aws_subnet.private_subnet.id
+  subnet_id      = aws_subnet.private_subnet_1.id
   route_table_id = aws_route_table.private_route_table.id
 }

@@ -21,17 +21,35 @@ abstract class _$AppRouter extends RootStackRouter {
         child: const HomeScreen(),
       );
     },
-    InitialRegistrationRoute.name: (routeData) {
+    InitialRegistrationNutritionistRoute.name: (routeData) {
       final pathParams = routeData.inheritedPathParams;
-      final args = routeData.argsAs<InitialRegistrationRouteArgs>(
-          orElse: () => InitialRegistrationRouteArgs(
+      final args = routeData.argsAs<InitialRegistrationNutritionistRouteArgs>(
+          orElse: () => InitialRegistrationNutritionistRouteArgs(
                 email: pathParams.getString('email'),
                 verificationCode: pathParams.getString('verificationCode'),
                 userType: pathParams.getString('userType'),
               ));
       return AutoRoutePage<dynamic>(
         routeData: routeData,
-        child: InitialRegistrationScreen(
+        child: InitialRegistrationNutritionistScreen(
+          key: args.key,
+          email: args.email,
+          verificationCode: args.verificationCode,
+          userType: args.userType,
+        ),
+      );
+    },
+    InitialRegistrationUserRoute.name: (routeData) {
+      final pathParams = routeData.inheritedPathParams;
+      final args = routeData.argsAs<InitialRegistrationUserRouteArgs>(
+          orElse: () => InitialRegistrationUserRouteArgs(
+                email: pathParams.getString('email'),
+                verificationCode: pathParams.getString('verificationCode'),
+                userType: pathParams.getString('userType'),
+              ));
+      return AutoRoutePage<dynamic>(
+        routeData: routeData,
+        child: InitialRegistrationUserScreen(
           key: args.key,
           email: args.email,
           verificationCode: args.verificationCode,
@@ -75,18 +93,18 @@ class HomeRoute extends PageRouteInfo<void> {
 }
 
 /// generated route for
-/// [InitialRegistrationScreen]
-class InitialRegistrationRoute
-    extends PageRouteInfo<InitialRegistrationRouteArgs> {
-  InitialRegistrationRoute({
+/// [InitialRegistrationNutritionistScreen]
+class InitialRegistrationNutritionistRoute
+    extends PageRouteInfo<InitialRegistrationNutritionistRouteArgs> {
+  InitialRegistrationNutritionistRoute({
     Key? key,
     required String email,
     required String verificationCode,
     required String userType,
     List<PageRouteInfo>? children,
   }) : super(
-          InitialRegistrationRoute.name,
-          args: InitialRegistrationRouteArgs(
+          InitialRegistrationNutritionistRoute.name,
+          args: InitialRegistrationNutritionistRouteArgs(
             key: key,
             email: email,
             verificationCode: verificationCode,
@@ -100,14 +118,14 @@ class InitialRegistrationRoute
           initialChildren: children,
         );
 
-  static const String name = 'InitialRegistrationRoute';
+  static const String name = 'InitialRegistrationNutritionistRoute';
 
-  static const PageInfo<InitialRegistrationRouteArgs> page =
-      PageInfo<InitialRegistrationRouteArgs>(name);
+  static const PageInfo<InitialRegistrationNutritionistRouteArgs> page =
+      PageInfo<InitialRegistrationNutritionistRouteArgs>(name);
 }
 
-class InitialRegistrationRouteArgs {
-  const InitialRegistrationRouteArgs({
+class InitialRegistrationNutritionistRouteArgs {
+  const InitialRegistrationNutritionistRouteArgs({
     this.key,
     required this.email,
     required this.verificationCode,
@@ -124,7 +142,61 @@ class InitialRegistrationRouteArgs {
 
   @override
   String toString() {
-    return 'InitialRegistrationRouteArgs{key: $key, email: $email, verificationCode: $verificationCode, userType: $userType}';
+    return 'InitialRegistrationNutritionistRouteArgs{key: $key, email: $email, verificationCode: $verificationCode, userType: $userType}';
+  }
+}
+
+/// generated route for
+/// [InitialRegistrationUserScreen]
+class InitialRegistrationUserRoute
+    extends PageRouteInfo<InitialRegistrationUserRouteArgs> {
+  InitialRegistrationUserRoute({
+    Key? key,
+    required String email,
+    required String verificationCode,
+    required String userType,
+    List<PageRouteInfo>? children,
+  }) : super(
+          InitialRegistrationUserRoute.name,
+          args: InitialRegistrationUserRouteArgs(
+            key: key,
+            email: email,
+            verificationCode: verificationCode,
+            userType: userType,
+          ),
+          rawPathParams: {
+            'email': email,
+            'verificationCode': verificationCode,
+            'userType': userType,
+          },
+          initialChildren: children,
+        );
+
+  static const String name = 'InitialRegistrationUserRoute';
+
+  static const PageInfo<InitialRegistrationUserRouteArgs> page =
+      PageInfo<InitialRegistrationUserRouteArgs>(name);
+}
+
+class InitialRegistrationUserRouteArgs {
+  const InitialRegistrationUserRouteArgs({
+    this.key,
+    required this.email,
+    required this.verificationCode,
+    required this.userType,
+  });
+
+  final Key? key;
+
+  final String email;
+
+  final String verificationCode;
+
+  final String userType;
+
+  @override
+  String toString() {
+    return 'InitialRegistrationUserRouteArgs{key: $key, email: $email, verificationCode: $verificationCode, userType: $userType}';
   }
 }
 

@@ -4,16 +4,17 @@ import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
+import 'package:tamotsu/routes/app_router.dart';
 import 'package:tamotsu/viewmodels/auth_view_model.dart';
 import 'package:tamotsu/viewmodels/user_view_model.dart';
 
 @RoutePage()
-class InitialRegistrationScreen extends StatefulWidget {
+class InitialRegistrationUserScreen extends StatefulWidget {
   final String email;
   final String verificationCode;
   final String userType;
 
-  const InitialRegistrationScreen({
+  const InitialRegistrationUserScreen({
     Key? key,
     @PathParam('email') required this.email,
     @PathParam('verificationCode') required this.verificationCode,
@@ -24,15 +25,13 @@ class InitialRegistrationScreen extends StatefulWidget {
   _InitialRegistrationScreenState createState() => _InitialRegistrationScreenState();
 }
 
-class _InitialRegistrationScreenState extends State<InitialRegistrationScreen> {
+class _InitialRegistrationScreenState extends State<InitialRegistrationUserScreen> {
   final _formKey = GlobalKey<FormState>();
   late Future<void> _initFuture;
   late String email;
   late String verificationCode;
   late String? userType;
-  String password = '';
-  String confirmPassword = '';
-  String nickname = '';
+  String name = '';
   XFile? profileImage;
   int? age;
   String? gender;
@@ -43,6 +42,9 @@ class _InitialRegistrationScreenState extends State<InitialRegistrationScreen> {
   List<String> dietaryRestrictions = [];
   String dislikedFoods = '';
   List<String> healthConcerns = [];
+
+  String _password = '';
+  String _confirmPassword = '';
 
   @override
   void initState() {
@@ -64,21 +66,16 @@ class _InitialRegistrationScreenState extends State<InitialRegistrationScreen> {
 
       final authViewModel = Provider.of<AuthViewModel>(context, listen: false);
 
-      final success = await authViewModel.verifyEmail(verificationCode, email, password);
+      final verification_success = await authViewModel.verifyEmail(verificationCode, email, _password);
         
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('仮登録が完了しました。メールをご確認ください。')),
-        );
-        // 登録成功後、ログイン画面に戻る
-        // ignore: deprecated_member_use
-        context.router.pop();
-      } else {
+      if (!verification_success) {
+        // TODO: パスワードのどこで引っ掛かったかをエラー表示する
         throw Exception('登録に失敗しました');
       }
 
-      final Map<String, dynamic> data = {
-        "nickname": nickname,
+      try {
+        final Map<String, dynamic> data = {
+        "name": name,
         "profileImage": profileImage != null ? File(profileImage!.path).readAsBytesSync() : null,
         "age": age,
         "gender": gender,
@@ -92,8 +89,17 @@ class _InitialRegistrationScreenState extends State<InitialRegistrationScreen> {
       };
 
       final userViewModel = Provider.of<UserViewModel>(context, listen: false);
-      await userViewModel.updateUserProfile(data);
+      final profile_success = await userViewModel.updateUserProfile(data);
 
+      if (!profile_success) {
+        throw Exception('プロフィール更新に失敗しました');
+      }
+
+      context.router.push(const HomeRoute());
+
+      } catch (e) {
+        print(e.toString());
+      }
     }
   }
 
@@ -124,19 +130,23 @@ class _InitialRegistrationScreenState extends State<InitialRegistrationScreen> {
                       TextFormField(
                         decoration: InputDecoration(labelText: 'パスワード'),
                         obscureText: true,
+                        onChanged: (value) => setState(() => _password = value),
                         validator: (value) => value!.isEmpty ? 'パスワードを入力してください' : null,
-                        onSaved: (value) => password = value!,
                       ),
                       TextFormField(
                         decoration: InputDecoration(labelText: 'パスワード再入力'),
                         obscureText: true,
-                        validator: (value) => value != password ? 'パスワードが一致しません' : null,
-                        onSaved: (value) => confirmPassword = value!,
+                        onChanged: (value) => setState(() => _confirmPassword = value),
+                        validator: (value) {
+                          if (value!.isEmpty) return 'パスワードを再入力してください';
+                          if (value != _password) return 'パスワードが一致しません';
+                          return null;
+                        },
                       ),
                       TextFormField(
                         decoration: InputDecoration(labelText: 'ニックネーム'),
                         validator: (value) => value!.isEmpty ? 'ニックネームを入力してください' : null,
-                        onSaved: (value) => nickname = value!,
+                        onSaved: (value) => name = value!,
                       ),
                       ElevatedButton(
                         onPressed: () async {

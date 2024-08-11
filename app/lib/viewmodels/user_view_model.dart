@@ -32,15 +32,17 @@ class UserViewModel extends ChangeNotifier {
   }
 
   // ユーザープロフィールを更新するメソッド
-  Future<void> updateUserProfile(Map<String, dynamic> profileData) async {
+  Future<bool> updateUserProfile(Map<String, dynamic> profileData) async {
     _isLoading = true; // ローディング状態をtrueに設定
     notifyListeners(); // リスナーに通知
 
     try {
       await userService.updateUserProfile(profileData); // UserServiceを使用してユーザープロフィールを更新
       await fetchUserProfile(); // プロフィールデータをリフレッシュ
+      return true;
     } catch (e) {
       // エラーハンドリング
+      return false;
     } finally {
       _isLoading = false; // ローディング状態をfalseに設定
       notifyListeners(); // リスナーに通知

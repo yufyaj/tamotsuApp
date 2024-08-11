@@ -3,8 +3,11 @@ import 'dart:convert'; // JSONエンコード/デコードのためのパッケ�
 import 'package:shared_preferences/shared_preferences.dart'; // ローカルストレージにデータを保存するためのパッケージをインポート
 
 class AuthService {
-  final String baseUrl = 'https://api.tamotsu-app.com'; // APIのベースURL
+  final String baseUrl; // APIのベースURL
   final String tokenKey = 'auth_token'; // トークンを保存する際のキー
+
+    // コンストラクタでbaseUrlとauthServiceを受け取る
+  AuthService({required this.baseUrl});
 
   // ログインメソッド
   Future<String> login(String email, String password) async {

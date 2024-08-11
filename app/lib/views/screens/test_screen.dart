@@ -25,7 +25,7 @@ class TestScreen extends StatelessWidget {
             TextButton(
               child: Text('これはテストです。これはテストです。これはテストです。'),
               onPressed: () {
-                context.router.push(InitialRegistrationRoute(email: '', verificationCode: '', userType: ''));
+                context.router.push(InitialRegistrationUserRoute(email: '', verificationCode: '', userType: ''));
               },
             ),
           ]

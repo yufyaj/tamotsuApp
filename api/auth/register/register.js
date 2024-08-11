@@ -1,7 +1,8 @@
 const AWS = require('aws-sdk');
+const mysql = require('mysql2/promise');
 const { successResponse, errorResponse } = require('response-utils');
+
 const cognito = new AWS.CognitoIdentityServiceProvider();
-const dynamodb = new AWS.DynamoDB.DocumentClient();
 const ses = new AWS.SES();
 
 exports.handler = async (event) => {
@@ -14,6 +15,15 @@ exports.handler = async (event) => {
         return errorResponse('必須フィールドが不足しています');
     }
 
+    const connection = await mysql.createConnection({
+        host: process.env.DB_HOST,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME
+    });
+
+    await connection.beginTransaction();
+
     try {
         // Cognitoでメールアドレスの存在確認
         const listUsersParams = {
@@ -23,48 +33,36 @@ exports.handler = async (event) => {
         };
         const existingUsers = await cognito.listUsers(listUsersParams).promise();
         if (existingUsers.Users.length > 0) {
+            await connection.rollback();
             return errorResponse('このメールアドレスは既に登録されています');
         }
 
         // 検証コードの生成
         const verificationCode = Math.random().toString(36).substring(2, 8);
 
-        // DynamoDBにユーザー情報を一時保存
-        const timestamp = new Date().toISOString();
-        const dynamoParams = {
-            TableName: 'tamotsu-table',
-            Item: {
-                PK: `EMAIL#${email}`,
-                SK: `TEMP_USER`,
-                TypePK: `TYPE#TEMP_USER`,
-                TypeSK: `EMAIL#${email}`,
-                GSI1PK: `STATUS#UNVERIFIED`,
-                GSI1SK: `CREATED#${timestamp}`,
-                Type: 'TEMP_USER',
-                Data: {
-                    email: email,
-                    user_type: userType,
-                    verification_code: verificationCode,
-                    created_at: timestamp
-                }
-            }
-        };
-
-        await dynamodb.put(dynamoParams).promise();
+        // RDSにユーザー情報を一時保存
+        const [result] = await connection.execute(
+            'INSERT INTO temp_users (email, user_type, verification_code) VALUES (?, ?, ?)',
+            [email, userType, verificationCode]
+        );
 
         // 確認メールの送信
         await ses.sendEmail({
             Destination: { ToAddresses: [email] },
             Message: {
-                Body: { Text: { Data: `TAMOTSUへご登録頂きありがとうございます。\n\n以下のリンクから確認を完了してください：\nhttps://tamotsu-app.com/verify?email=${email}&verificationCode=${verificationCode}` } },
+                Body: { Text: { Data: `TAMOTSUへご登録頂きありがとうございます。\n\n以下のリンクから確認を完了してください：\nhttps://tamotsu-app.com/verify?email=${email}&verificationCode=${verificationCode}&userType=${userType}` } },
                 Subject: { Data: 'TAMOTSUへご登録ありがとうございます' }
             },
             Source: process.env.FROM_EMAIL_ADDRESS
         }).promise();
 
+        await connection.commit();
         return successResponse({message:'仮登録が完了しました。メールをご確認ください。'});
     } catch (error) {
+        await connection.rollback();
         console.error('Error:', error);
         return errorResponse('サーバーエラーが発生しました');
+    } finally {
+        await connection.end();
     }
 };

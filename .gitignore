@@ -4,5 +4,6 @@ infra/env1.tfvars
 .infracost
 .vscode
 api/layers/aws-sdk-layer/nodejs/node_modules
+api/layers/mysql2-layer/nodejs/node_modules
 *.zip
 ~*
