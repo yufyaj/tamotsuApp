@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart'; // ローカルス�
 class AuthService {
   final String baseUrl; // APIのベースURL
   final String tokenKey = 'auth_token'; // トークンを保存する際のキー
+  final String userTypeKey = 'auth_userType'; // ユーザータイプを保存する際のキー
 
     // コンストラクタでbaseUrlとauthServiceを受け取る
   AuthService({required this.baseUrl});
@@ -24,7 +25,9 @@ class AuthService {
     // レスポンスが成功した場合
     if (response.statusCode == 200) {
       final token = json.decode(response.body)['token']; // レスポンスからトークンを取得
+      final userType = json.decode(response.body)['userType']; // レスポンスからユーザータイプを取得
       await _storeToken(token); // トークンをローカルストレージに保存
+      await _storeUserType(userType); // トークンをローカルストレージに保存
       return token; // トークンを返す
     } else {
       throw Exception('ログインに失敗しました'); // エラーハンドリング
@@ -36,10 +39,22 @@ class AuthService {
     await _removeToken(); // ローカルストレージからトークンを削除
   }
 
+  // 保存されたユーザータイプを取得するメソッド
+  Future<String?> getStoredUserType() async {
+    final prefs = await SharedPreferences.getInstance(); // SharedPreferencesのインスタンスを取得
+    return prefs.getString(userTypeKey); // トークンを取得して返す
+  }
+
   // 保存されたトークンを取得するメソッド
   Future<String?> getStoredToken() async {
     final prefs = await SharedPreferences.getInstance(); // SharedPreferencesのインスタンスを取得
     return prefs.getString(tokenKey); // トークンを取得して返す
+  }
+
+  // ユーザータイプを保存するプライベートメソッド
+  Future<void> _storeUserType(String userType) async {
+    final prefs = await SharedPreferences.getInstance(); // SharedPreferencesのインスタンスを取得
+    await prefs.setString(userTypeKey, userType); // トークンを保存
   }
 
   // トークンを保存するプライベートメソッド

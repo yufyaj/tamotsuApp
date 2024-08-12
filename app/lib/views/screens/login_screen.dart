@@ -17,23 +17,29 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
-      _formKey.currentState!.save();
-      
       final authViewModel = Provider.of<AuthViewModel>(context, listen: false);
-      
+
       try {
         final success = await authViewModel.login(_email, _password);
-        
         if (success) {
-          // 登録成功後、ログイン画面に戻る
-          // ignore: deprecated_member_use
-          context.router.push(const HomeRoute());
+          final userType = await authViewModel.getAuthUserType();
+          if (userType == 'user') {
+            context.router.push(const HomeRoute());
+          } else if(userType == 'nutritionist') {
+            context.router.push(const HomeRoute());
+          } else {
+            throw Exception('ログインに失敗しました');
+          }
         } else {
           throw Exception('ログインに失敗しました');
         }
       } catch (e) {
+        String errorMessage = 'ログインに失敗しました。もう一度お試しください。';
+        if (e is Exception) {
+          errorMessage = e.toString();
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('ログインに失敗しました。もう一度お試しください。')),
+          SnackBar(content: Text(errorMessage)),
         );
       }
     }
@@ -70,7 +76,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       }
                       return null;
                     },
-                    onSaved: (value) => _email = value!,
+                    onChanged: (value) => setState(() => _email = value),
+                    onFieldSubmitted: (_) => _login(),
                   ),
                   SizedBox(height: 16.0),
                   TextFormField(
@@ -85,19 +92,13 @@ class _LoginScreenState extends State<LoginScreen> {
                       }
                       return null;
                     },
-                    onSaved: (value) => _password = value!,
+                    onChanged: (value) => setState(() => _password = value),
+                    onFieldSubmitted: (_) => _login(),
                   ),
                   SizedBox(height: 24.0),
                   ElevatedButton(
                     child: Text('ログイン'),
-                    onPressed: () {
-                      if (_formKey.currentState!.validate()) {
-                        _formKey.currentState!.save();
-                        // ログイン処理
-                        // 成功したら、HomeScreenに遷移
-                        _login();
-                      }
-                    },
+                    onPressed: _login,
                   ),
                   SizedBox(height: 16.0),
                   TextButton(

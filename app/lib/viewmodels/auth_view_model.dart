@@ -39,13 +39,13 @@ class AuthViewModel extends ChangeNotifier {
   }
 
   // ログインメソッド
-  Future<bool> login(String username, String password) async {
+  Future<bool> login(String email, String password) async {
     _isLoading = true; // ローディング状態をtrueに設定
     _error = null; // エラーメッセージをクリア
     notifyListeners(); // リスナーに通知
 
     try {
-      _token = await _authService.login(username, password); // AuthServiceを使用してログイン
+      _token = await _authService.login(email, password); // AuthServiceを使用してログイン
       _isLoading = false; // ローディング状態をfalseに設定
       notifyListeners(); // リスナーに通知
       return true; // ログイン成功の場合はtrueを返す
@@ -90,6 +90,24 @@ class AuthViewModel extends ChangeNotifier {
       _error = e.toString(); // エラーメッセージを設定
       _isLoading = false; // ローディング状態をfalseに設定
       notifyListeners(); // リスナーに通知
+    }
+  }
+
+  // ユーザータイプをチェックするメソッド
+  Future<String?> getAuthUserType() async {
+    _isLoading = true; // ローディング状態をtrueに設定
+    notifyListeners(); // リスナーに通知
+
+    try {
+      final _userType = await _authService.getStoredUserType(); // 保存されたトークンを取得
+      _isLoading = false; // ローディング状態をfalseに設定
+      notifyListeners(); // リスナーに通知
+      return _userType;
+    } catch (e) {
+      _error = e.toString(); // エラーメッセージを設定
+      _isLoading = false; // ローディング状態をfalseに設定
+      notifyListeners(); // リスナーに通知
+      return null;
     }
   }
 
