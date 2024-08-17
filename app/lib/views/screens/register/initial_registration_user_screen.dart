@@ -60,6 +60,7 @@ class _InitialRegistrationScreenState extends State<InitialRegistrationUserScree
     });
   }
 
+// TODO: 登録時にエラーの場合、カーソル移動、登録ボタン押下時にロード画面
   Future<void> submitForm() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
@@ -95,7 +96,7 @@ class _InitialRegistrationScreenState extends State<InitialRegistrationUserScree
         throw Exception('プロフィール更新に失敗しました');
       }
 
-      context.router.push(const HomeRoute());
+      context.router.push(NutritionistListRoute());
 
       } catch (e) {
         print(e.toString());

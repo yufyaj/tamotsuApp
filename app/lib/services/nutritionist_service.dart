@@ -34,6 +34,12 @@ class NutritionistService {
       throw Exception('Token not found');
     }
 
+    print(Uri.parse('$baseUrl/nutritionists/profile'));
+    print({
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      });
+    print(json.encode(profileData));
     final response = await http.put(
       Uri.parse('$baseUrl/nutritionists/profile'),
       headers: {
@@ -71,8 +77,7 @@ class NutritionistService {
   }
 
   Future<Map<String, dynamic>> getNutritionistList({
-    String? specialty,
-    String? language,
+    String? search,
     int page = 1,
     int perPage = 10,
   }) async {
@@ -82,14 +87,13 @@ class NutritionistService {
     }
 
     final queryParams = {
-      if (specialty != null) 'specialty': specialty,
-      if (language != null) 'language': language,
+      if (search != null) 'search': search,
       'page': page.toString(),
       'perPage': perPage.toString(),
     };
 
     final response = await http.get(
-      Uri.parse('$baseUrl/nutritionists').replace(queryParameters: queryParams),
+      Uri.parse('$baseUrl/nutritionists/list').replace(queryParameters: queryParams),
       headers: {
         'Authorization': 'Bearer $token',
       },

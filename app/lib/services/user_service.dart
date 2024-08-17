@@ -79,4 +79,31 @@ class UserService {
       throw Exception('Failed to load public profile'); // エラーハンドリング
     }
   }
+
+  // 特定ユーザーの公開プロフィールを取得するメソッド
+  Future<void> selectNutritionist(String nutritionistId) async {
+    final token = await authService.getStoredToken(); // 保存されたトークンを取得
+    if (token == null) {
+      throw Exception('Token not found'); // トークンが見つからない場合のエラーハンドリング
+    }
+
+    // PUTリクエストを送信して
+    final response = await http.put(
+      Uri.parse('$baseUrl/users/selectNutritionist'),
+      headers: {
+        'Authorization': 'Bearer $token', // リクエストヘッダーにトークンを設定
+      },
+      body: json.encode({
+        'nutritionistId': nutritionistId,
+      }), // リクエストボディに管理栄養士IDをJSON形式で設定
+    );
+
+    // レスポンスが成功した場合
+    if (response.statusCode == 200) {
+      return;
+    } else {
+      throw Exception('Failed to load public profile'); // エラーハンドリング
+    }
+  }
+
 }

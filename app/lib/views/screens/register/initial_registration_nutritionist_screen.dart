@@ -57,14 +57,16 @@ class _InitialRegistrationNutritionistScreenState extends State<InitialRegistrat
     });
   }
 
+// TODO: 登録時にエラーの場合、カーソル移動、登録ボタン押下時にロード画面
+// TODO: エラー時に通知バーを表示
   Future submitForm() async {
     if (_formKey.currentState!.validate()) {
       _formKey.currentState!.save();
-      // final authViewModel = Provider.of<AuthViewModel>(context, listen: false);
-      // final success = await authViewModel.verifyEmail(verificationCode, email, _password);
-      // if (!success) {
-      //   throw Exception('登録に失敗しました');
-      // }
+      final authViewModel = Provider.of<AuthViewModel>(context, listen: false);
+      final success = await authViewModel.verifyEmail(verificationCode, email, _password);
+      if (!success) {
+        throw Exception('登録に失敗しました');
+      }
 
       final Map<String, dynamic> data = {
         "name": name,

@@ -1,11 +1,14 @@
-const AWS = require('aws-sdk');
+const { CognitoIdentityProviderClient, ListUsersCommand } = require("@aws-sdk/client-cognito-identity-provider");
+const { SESClient, SendEmailCommand } = require("@aws-sdk/client-ses");
 const mysql = require('mysql2/promise');
 const { successResponse, errorResponse } = require('response-utils');
 
-const cognito = new AWS.CognitoIdentityServiceProvider();
-const ses = new AWS.SES();
+const cognitoClient = new CognitoIdentityProviderClient({ region: process.env.MY_REGION });
+const sesClient = new SESClient({ region: process.env.MY_REGION });
 
 exports.handler = async (event) => {
+    console.log("debug_log_0: start");
+
     const { email, userType } = JSON.parse(event.body);
     const clientId = process.env.COGNITO_USER_POOL_CLIENT_ID;
     const userPoolId = process.env.COGNITO_USER_POOL_ID;
@@ -22,7 +25,11 @@ exports.handler = async (event) => {
         database: process.env.DB_NAME
     });
 
+    console.log("debug_log_1: connected db");
+
     await connection.beginTransaction();
+
+    console.log("debug_log_2: begin transaction");
 
     try {
         // Cognitoでメールアドレスの存在確認
@@ -31,11 +38,13 @@ exports.handler = async (event) => {
             Filter: `email = "${email}"`,
             Limit: 1
         };
-        const existingUsers = await cognito.listUsers(listUsersParams).promise();
+        const existingUsers = await cognitoClient.send(new ListUsersCommand(listUsersParams));
         if (existingUsers.Users.length > 0) {
             await connection.rollback();
             return errorResponse('このメールアドレスは既に登録されています');
         }
+
+        console.log("debug_log_3: checked cognito");
 
         // 検証コードの生成
         const verificationCode = Math.random().toString(36).substring(2, 8);
@@ -46,15 +55,19 @@ exports.handler = async (event) => {
             [email, userType, verificationCode]
         );
 
+        console.log("debug_log_4: save temp_users");
+
         // 確認メールの送信
-        await ses.sendEmail({
+        await sesClient.send(new SendEmailCommand({
             Destination: { ToAddresses: [email] },
             Message: {
                 Body: { Text: { Data: `TAMOTSUへご登録頂きありがとうございます。\n\n以下のリンクから確認を完了してください：\nhttps://tamotsu-app.com/verify?email=${email}&verificationCode=${verificationCode}&userType=${userType}` } },
                 Subject: { Data: 'TAMOTSUへご登録ありがとうございます' }
             },
             Source: process.env.FROM_EMAIL_ADDRESS
-        }).promise();
+        }));
+
+        console.log("debug_log_5: send mail");
 
         await connection.commit();
         return successResponse({message:'仮登録が完了しました。メールをご確認ください。'});

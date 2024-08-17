@@ -65,8 +65,7 @@ class NutritionistViewModel extends ChangeNotifier {
   }
 
   Future<void> fetchNutritionistList({
-    String? specialty,
-    String? language,
+    String? search,
     int page = 1,
     int perPage = 10,
   }) async {
@@ -75,17 +74,20 @@ class NutritionistViewModel extends ChangeNotifier {
 
     try {
       final result = await _nutritionistService.getNutritionistList(
-        specialty: specialty,
-        language: language,
+        search: search,
         page: page,
         perPage: perPage,
       );
-      _nutritionistList = List<Map<String, dynamic>>.from(result['nutritionists']);
+      _nutritionistList.addAll(List<Map<String, dynamic>>.from(result['nutritionists']));
     } catch (e) {
       print('Error fetching nutritionist list: $e');
     } finally {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> clearNutritionistList() async {
+    _nutritionistList.clear();
   }
 }

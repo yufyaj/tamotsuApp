@@ -63,4 +63,19 @@ class UserViewModel extends ChangeNotifier {
       notifyListeners(); // リスナーに通知
     }
   }
+
+  // 管理栄養士を設定するメソッド
+  Future<void> selectNutritionist(String nutritionistId) async {
+    _isLoading = true; // ローディング状態をtrueに設定
+    notifyListeners(); // リスナーに通知
+
+    try {
+      await userService.selectNutritionist(nutritionistId); // UserServiceを使用して管理栄養士を決定
+    } catch (e) {
+      // エラーハンドリング
+    } finally {
+      _isLoading = false; // ローディング状態をfalseに設定
+      notifyListeners(); // リスナーに通知
+    }
+  }
 }

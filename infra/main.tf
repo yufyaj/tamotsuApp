@@ -101,13 +101,13 @@ resource "aws_subnet" "private_subnet_2" {
   }
 }
 
-# DBサブネットグループ
-resource "aws_db_subnet_group" "aurora_subnet_group" {
-  name       = "aurora-db-subnet-group"
+# RDS用のサブネットグループ
+resource "aws_db_subnet_group" "tamotsu" {
+  name       = "tamotsu-db-subnet-group"
   subnet_ids = [aws_subnet.private_subnet_1.id, aws_subnet.private_subnet_2.id]
 
   tags = {
-    Name = "Aurora-DB-Subnet-Group"
+    Name = "Tamotsu DB subnet group"
   }
 }
 
@@ -130,13 +130,26 @@ resource "aws_security_group" "lambda_sg" {
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-  
-  ingress {
-    from_port   = 3306
-    to_port     = 3306
-    protocol    = "tcp"
-    // cidr_blocks = ["${local.my_ip}/32", "${aws_eip.nat_eip.public_ip}/32", "35.74.21.73/32"]  # 自分のIPアドレス, NATゲートウェイ, CloudShell
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# RDS用のセキュリティグループ
+resource "aws_security_group" "rds_sg" {
+  name        = "tamotsu-rds-sg"
+  description = "Security group for RDS instance"
+  vpc_id      = aws_vpc.tamotsu_vpc.id
+
+  ingress {
+    from_port       = 3306
+    to_port         = 3306
+    protocol        = "tcp"
+    security_groups = [aws_security_group.lambda_sg.id]
   }
 
   egress {
@@ -219,6 +232,7 @@ resource "aws_cognito_user_pool" "tamotsu_user_pool" {
     require_numbers   = true
     require_symbols   = true
     require_uppercase = true
+    temporary_password_validity_days = 7
   }
 
   # メッセージング (SES)
@@ -284,33 +298,36 @@ resource "aws_cognito_user_pool_client" "client" {
   prevent_user_existence_errors = "ENABLED"
 }
 
-# auroraの作成
-resource "aws_rds_cluster" "aurora_cluster" {
-  cluster_identifier = "aurora-cluster"
-  engine             = "aurora-mysql"
-  engine_version     = "8.0.mysql_aurora.3.04.0"
-  master_username    = var.db_user
-  master_password    = var.db_password
-  db_subnet_group_name = aws_db_subnet_group.aurora_subnet_group.name
-  vpc_security_group_ids = [aws_security_group.lambda_sg.id]
-  database_name           = var.db_name  # データベース名をここで指定
-
-  tags = {
-    Name = "Aurora-DB-Cluster"
-  }
+# RDSインスタンスの作成
+resource "aws_db_instance" "tamotsu_db" {
+  identifier           = "tamotsu-db"
+  engine               = "mysql"
+  engine_version       = "8.0"
+  instance_class       = "db.t4g.micro"
+  allocated_storage    = 20
+  storage_type         = "gp2"
+  db_name              = var.db_name
+  username             = var.db_user
+  password             = var.db_password
+  skip_final_snapshot  = true
+  vpc_security_group_ids = [aws_security_group.rds_sg.id]
+  db_subnet_group_name = aws_db_subnet_group.tamotsu.name
+  multi_az             = false
+  parameter_group_name = aws_db_parameter_group.tamotsu_db_param_group.name
 }
 
-resource "aws_rds_cluster_instance" "aurora_cluster_instance" {
-  count                = 2
-  identifier           = "aurora-instance-${count.index}"
-  cluster_identifier   = aws_rds_cluster.aurora_cluster.id
-  instance_class       = "db.t3.medium"
-  engine               = "aurora-mysql"
-  db_subnet_group_name = aws_db_subnet_group.aurora_subnet_group.name
-  publicly_accessible  = true
+resource "aws_db_parameter_group" "tamotsu_db_param_group" {
+  family = "mysql8.0"
+  name   = "tamotsu-db-param-group"
 
-  tags = {
-    Name = "Aurora-DB-Instance-${count.index}"
+  parameter {
+    name  = "character_set_server"
+    value = "utf8mb4"
+  }
+
+  parameter {
+    name  = "collation_server"
+    value = "utf8mb4_0900_ai_ci"
   }
 }
 
@@ -395,7 +412,7 @@ resource "aws_cloudfront_function" "add_index_html" {
   comment = "Add index.html to URLs without a file name"
   publish = true
   code    = <<-EOT
-function handler(event) {
+  function handler(event) {
     var request = event.request;
     var uri = request.uri;
     
@@ -409,7 +426,7 @@ function handler(event) {
     }
 
     return request;
-}
+  }
 EOT
 }
 
@@ -647,6 +664,15 @@ locals {
         http_method = ["PUT", "GET"]
         parent_id   = aws_api_gateway_resource.users_resource.id  # 親リソースを設定
       }
+      selectNutritionist = {
+        filename = "../api/users/selectNutritionist/selectNutritionist.zip"
+        handler  = "selectNutritionist.handler"
+        env_vars = {
+          COGNITO_USER_POOL_ID = aws_cognito_user_pool.tamotsu_user_pool.id,
+        }
+        http_method = ["PUT"]
+        parent_id   = aws_api_gateway_resource.users_resource.id  # 親リソースを設定
+      }
     }
     nutritionists = {
       profile = {
@@ -657,6 +683,16 @@ locals {
           S3_BUCKET_NAME = aws_s3_bucket.tamotsu_images.id 
         }
         http_method = ["PUT", "GET"]
+        parent_id   = aws_api_gateway_resource.nutritionists_resource.id  # 親リソースを設定
+      }
+      list = {
+        filename = "../api/nutritionists/list/list.zip"
+        handler  = "list.handler"
+        env_vars = {
+          COGNITO_USER_POOL_ID = aws_cognito_user_pool.tamotsu_user_pool.id,
+          S3_BUCKET_NAME = aws_s3_bucket.tamotsu_images.id 
+        }
+        http_method = "GET"
         parent_id   = aws_api_gateway_resource.nutritionists_resource.id  # 親リソースを設定
       }
     }
@@ -904,16 +940,17 @@ module "lambda_functions" {
   runtime = "nodejs20.x"
   role_arn = aws_iam_role.lambda_role.arn
   vpc_config = {
-    subnet_ids = [aws_subnet.private_subnet_1.id]
+    subnet_ids = [aws_subnet.private_subnet_1.id, aws_subnet.private_subnet_2.id]
     security_group_ids = [aws_security_group.lambda_sg.id]
   }
   environment_variables = merge(
     each.value.env_vars,
     {
-      DB_HOST = aws_rds_cluster.aurora_cluster.endpoint,
+      DB_HOST = replace(aws_db_instance.tamotsu_db.endpoint, ":3306", ""),
       DB_USER = var.db_user,
       DB_PASSWORD = var.db_password,
-      DB_NAME = var.db_name
+      DB_NAME = var.db_name,
+      MY_REGION = var.region
     }
   )
   layer_arns = [
@@ -1040,7 +1077,12 @@ resource "aws_route_table" "private_route_table" {
   }
 }
 
-resource "aws_route_table_association" "private_route_assoc" {
+resource "aws_route_table_association" "private_route_assoc1" {
   subnet_id      = aws_subnet.private_subnet_1.id
+  route_table_id = aws_route_table.private_route_table.id
+}
+
+resource "aws_route_table_association" "private_route_assoc2" {
+  subnet_id      = aws_subnet.private_subnet_2.id
   route_table_id = aws_route_table.private_route_table.id
 }

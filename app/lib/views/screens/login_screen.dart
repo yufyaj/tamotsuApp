@@ -105,7 +105,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Text('パスワードをお忘れですか？'),
                     onPressed: () {
                       // パスワードリセット画面への遷移
-                      context.router.push(InitialRegistrationNutritionistRoute(email: '', verificationCode: '', userType: ''));
+                      context.router.push(NutritionistListRoute());
                     },
                   ),
                   TextButton(

@@ -1,3 +1,5 @@
+ALTER DATABASE tamotsu CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+
 CREATE TABLE IF NOT EXISTS users (
     user_id VARCHAR(255) PRIMARY KEY,
     email VARCHAR(255) UNIQUE NOT NULL,
@@ -12,9 +14,11 @@ CREATE TABLE IF NOT EXISTS users (
     disliked_foods TEXT,
     health_concerns TEXT,
     profile_image_url TEXT,
+    selected_nutritionist_id VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    last_login TIMESTAMP
-);
+    last_login TIMESTAMP,
+    FOREIGN KEY (selected_nutritionist_id) REFERENCES nutritionists(nutritionist_id)
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS nutritionists (
     nutritionist_id VARCHAR(255) PRIMARY KEY,
@@ -27,7 +31,7 @@ CREATE TABLE IF NOT EXISTS nutritionists (
     available_hours JSON,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_login TIMESTAMP
-);
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS weight_logs (
     user_id VARCHAR(255),
@@ -35,7 +39,7 @@ CREATE TABLE IF NOT EXISTS weight_logs (
     record_date DATE,
     created_at TIMESTAMP,
     PRIMARY KEY (user_id, record_date)
-);
+) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS meal_logs (
     user_id VARCHAR(255),
@@ -44,7 +48,7 @@ CREATE TABLE IF NOT EXISTS meal_logs (
     photo_url TEXT,
     created_at TIMESTAMP,
     PRIMARY KEY (user_id, record_datetime)
-);
+)  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS food_items (
     item_id VARCHAR(255),
@@ -52,7 +56,7 @@ CREATE TABLE IF NOT EXISTS food_items (
     quantity DECIMAL(10, 2),
     unit VARCHAR(50),
     created_at TIMESTAMP
-);
+)  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS chats (
     chat_id VARCHAR(255) PRIMARY KEY,
@@ -61,7 +65,7 @@ CREATE TABLE IF NOT EXISTS chats (
     start_time TIMESTAMP,
     end_time TIMESTAMP,
     status VARCHAR(50)
-);
+)  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS chat_messages (
     chat_id VARCHAR(255),
@@ -70,7 +74,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     content TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (chat_id, timestamp)
-);
+)  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS appointments (
     appointment_id VARCHAR(255) PRIMARY KEY,
@@ -79,17 +83,17 @@ CREATE TABLE IF NOT EXISTS appointments (
     appointment_time TIMESTAMP,
     status VARCHAR(50),
     notes TEXT
-);
+)  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS temp_users (
     email VARCHAR(255) PRIMARY KEY,
     user_type VARCHAR(50),
     verification_code VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+)  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE sequence_table (
     sequence_name VARCHAR(50) NOT NULL,
     current_value INT NOT NULL,
     PRIMARY KEY (sequence_name)
-);
+)  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

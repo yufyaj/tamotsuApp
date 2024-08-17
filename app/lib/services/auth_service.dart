@@ -108,6 +108,7 @@ class AuthService {
       await _storeToken(token); // トークンをローカルストレージに保存
       return true; // 成功を返す
     } else {
+      // TODO: ここのエラー内容が新規登録画面に表示される
       throw Exception('メール認証に失敗しました'); // エラーハンドリング
     }
   }

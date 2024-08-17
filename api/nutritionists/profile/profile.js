@@ -1,9 +1,10 @@
-const AWS = require('aws-sdk');
+const { CognitoIdentityProviderClient, GetUserCommand } = require("@aws-sdk/client-cognito-identity-provider");
+const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 const mysql = require('mysql2/promise');
 const { successResponse, errorResponse } = require('response-utils');
 
-const cognito = new AWS.CognitoIdentityServiceProvider();
-const s3 = new AWS.S3();
+const cognitoClient = new CognitoIdentityProviderClient({ region: process.env.MY_REGION });
+const s3Client = new S3Client({ region: process.env.MY_REGION });
 
 exports.handler = async (event) => {
     const httpMethod = event.httpMethod;
@@ -28,13 +29,18 @@ async function handlePutRequest(event) {
     const token = event.headers.Authorization.split(' ')[1];
     const userPoolId = process.env.COGNITO_USER_POOL_ID;
 
+    console.log("debug_log_0: start");
+
     let connection;
 
     try {
         // Cognitoから栄養士情報を取得
-        const user = await cognito.getUser({ AccessToken: token }).promise();
+        const getUserCommand = new GetUserCommand({ AccessToken: token });
+        const user = await cognitoClient.send(getUserCommand);
         const nutritionistId = user.UserAttributes.find(attr => attr.Name === 'custom:nutritionistId').Value;
 
+        console.log("debug_log_1: checked cognito");
+        
         // リクエストボディをパース
         const profileData = JSON.parse(event.body);
 
@@ -43,13 +49,15 @@ async function handlePutRequest(event) {
         if (profileData.profileImage) {
             const buffer = Buffer.from(profileData.profileImage, 'base64');
             const key = `nutritionist-profile-images/${nutritionistId}-${Date.now()}.jpg`;
-            await s3.putObject({
+            const putObjectCommand = new PutObjectCommand({
                 Bucket: process.env.S3_BUCKET_NAME,
                 Key: key,
                 Body: buffer,
                 ContentType: 'image/jpeg'
-            }).promise();
+            });
+            await s3Client.send(putObjectCommand);
             profileImageUrl = `https://${process.env.S3_BUCKET_NAME}.s3.amazonaws.com/${key}`;
+            console.log("debug_log_(2): uploaded image");
         }
 
         // データベース接続
@@ -60,8 +68,12 @@ async function handlePutRequest(event) {
             database: process.env.DB_NAME
         });
 
+        console.log("debug_log_2: connected db");
+
         // トランザクション開始
         await connection.beginTransaction();
+
+        console.log("debug_log_3: begin transaction");
 
         // 栄養士プロフィールを更新
         const updateQuery = `
@@ -86,11 +98,15 @@ async function handlePutRequest(event) {
             nutritionistId
         ]);
 
+        console.log("debug_log_4: updated nutritionist profile");
+
         // トランザクションをコミット
         await connection.commit();
 
         // 更新後のプロフィールを取得
         const [updatedProfile] = await connection.execute('SELECT * FROM nutritionists WHERE nutritionist_id = ?', [nutritionistId]);
+
+        console.log("debug_log_5: selected nutritionist profile");
 
         return successResponse({ message: '栄養士プロフィールが更新されました', profile: updatedProfile[0] });
     } catch (error) {

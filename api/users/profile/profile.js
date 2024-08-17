@@ -1,9 +1,10 @@
-const AWS = require('aws-sdk');
+const { CognitoIdentityProviderClient, GetUserCommand } = require("@aws-sdk/client-cognito-identity-provider");
+const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 const mysql = require('mysql2/promise');
 const { successResponse, errorResponse } = require('response-utils');
 
-const cognito = new AWS.CognitoIdentityServiceProvider();
-const s3 = new AWS.S3();
+const cognitoClient = new CognitoIdentityProviderClient({ region: process.env.MY_REGION });
+const s3Client = new S3Client({ region: process.env.MY_REGION });
 
 exports.handler = async (event) => {
     // HTTPメソッドを取得
@@ -22,18 +23,24 @@ exports.handler = async (event) => {
 };
 
 async function handleGetRequest(event) {
+    // GET request handling (if needed)
 }
 
 async function handlePutRequest(event) {
     const token = event.headers.Authorization.split(' ')[1];
     const userPoolId = process.env.COGNITO_USER_POOL_ID;
 
+    console.log("debug_log_0: start");
+
     let connection;
 
     try {
         // Cognitoからユーザー情報を取得
-        const user = await cognito.getUser({ AccessToken: token }).promise();
+        const getUserCommand = new GetUserCommand({ AccessToken: token });
+        const user = await cognitoClient.send(getUserCommand);
         const userId = user.UserAttributes.find(attr => attr.Name === 'custom:userId').Value;
+
+        console.log("debug_log_1: checked cognito user");
 
         // リクエストボディをパース
         const profileData = JSON.parse(event.body);
@@ -43,13 +50,15 @@ async function handlePutRequest(event) {
         if (profileData.profileImage) {
             const buffer = Buffer.from(profileData.profileImage, 'base64');
             const key = `profile-images/${userId}-${Date.now()}.jpg`;
-            await s3.putObject({
+            const putObjectCommand = new PutObjectCommand({
                 Bucket: process.env.S3_BUCKET_NAME,
                 Key: key,
                 Body: buffer,
                 ContentType: 'image/jpeg'
-            }).promise();
+            });
+            await s3Client.send(putObjectCommand);
             profileImageUrl = `https://${process.env.S3_BUCKET_NAME}.s3.amazonaws.com/${key}`;
+            console.log("debug_log_(2): uploaded image");
         }
 
         // データベース接続
@@ -60,8 +69,12 @@ async function handlePutRequest(event) {
             database: process.env.DB_NAME
         });
 
+        console.log("debug_log_2: connected db");
+
         // トランザクション開始
         await connection.beginTransaction();
+
+        console.log("debug_log_3: begin transaction");
 
         // ユーザープロフィールを更新
         const updateQuery = `
@@ -95,14 +108,16 @@ async function handlePutRequest(event) {
             profileImageUrl,
             userId
         ]);
-        
-        // プロフィール画像の処理（S3へのアップロードなど）は省略
+
+        console.log("debug_log_4: updated user data");
 
         // トランザクションをコミット
         await connection.commit();
 
         // 更新後のプロフィールを取得
         const [updatedProfile] = await connection.execute('SELECT * FROM users WHERE user_id = ?', [userId]);
+
+        console.log("debug_log_5: selected user data");
 
         return successResponse({ message: 'プロフィールが更新されました', profile: updatedProfile[0] });
     } catch (error) {
@@ -112,4 +127,4 @@ async function handlePutRequest(event) {
     } finally {
         if (connection) await connection.end();
     }
-};
+}

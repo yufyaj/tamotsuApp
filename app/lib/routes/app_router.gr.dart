@@ -63,6 +63,24 @@ abstract class _$AppRouter extends RootStackRouter {
         child: LoginScreen(),
       );
     },
+    NutritionistDetailRoute.name: (routeData) {
+      final args = routeData.argsAs<NutritionistDetailRouteArgs>();
+      return AutoRoutePage<dynamic>(
+        routeData: routeData,
+        child: NutritionistDetailScreen(
+          key: args.key,
+          nutritionist: args.nutritionist,
+        ),
+      );
+    },
+    NutritionistListRoute.name: (routeData) {
+      final args = routeData.argsAs<NutritionistListRouteArgs>(
+          orElse: () => const NutritionistListRouteArgs());
+      return AutoRoutePage<dynamic>(
+        routeData: routeData,
+        child: NutritionistListScreen(key: args.key),
+      );
+    },
     RegisterRoute.name: (routeData) {
       return AutoRoutePage<dynamic>(
         routeData: routeData,
@@ -212,6 +230,74 @@ class LoginRoute extends PageRouteInfo<void> {
   static const String name = 'LoginRoute';
 
   static const PageInfo<void> page = PageInfo<void>(name);
+}
+
+/// generated route for
+/// [NutritionistDetailScreen]
+class NutritionistDetailRoute
+    extends PageRouteInfo<NutritionistDetailRouteArgs> {
+  NutritionistDetailRoute({
+    Key? key,
+    required Nutritionist nutritionist,
+    List<PageRouteInfo>? children,
+  }) : super(
+          NutritionistDetailRoute.name,
+          args: NutritionistDetailRouteArgs(
+            key: key,
+            nutritionist: nutritionist,
+          ),
+          initialChildren: children,
+        );
+
+  static const String name = 'NutritionistDetailRoute';
+
+  static const PageInfo<NutritionistDetailRouteArgs> page =
+      PageInfo<NutritionistDetailRouteArgs>(name);
+}
+
+class NutritionistDetailRouteArgs {
+  const NutritionistDetailRouteArgs({
+    this.key,
+    required this.nutritionist,
+  });
+
+  final Key? key;
+
+  final Nutritionist nutritionist;
+
+  @override
+  String toString() {
+    return 'NutritionistDetailRouteArgs{key: $key, nutritionist: $nutritionist}';
+  }
+}
+
+/// generated route for
+/// [NutritionistListScreen]
+class NutritionistListRoute extends PageRouteInfo<NutritionistListRouteArgs> {
+  NutritionistListRoute({
+    Key? key,
+    List<PageRouteInfo>? children,
+  }) : super(
+          NutritionistListRoute.name,
+          args: NutritionistListRouteArgs(key: key),
+          initialChildren: children,
+        );
+
+  static const String name = 'NutritionistListRoute';
+
+  static const PageInfo<NutritionistListRouteArgs> page =
+      PageInfo<NutritionistListRouteArgs>(name);
+}
+
+class NutritionistListRouteArgs {
+  const NutritionistListRouteArgs({this.key});
+
+  final Key? key;
+
+  @override
+  String toString() {
+    return 'NutritionistListRouteArgs{key: $key}';
+  }
 }
 
 /// generated route for

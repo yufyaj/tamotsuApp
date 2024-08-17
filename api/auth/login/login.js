@@ -1,8 +1,8 @@
-const AWS = require('aws-sdk');
+const { CognitoIdentityProviderClient, InitiateAuthCommand, GetUserCommand } = require("@aws-sdk/client-cognito-identity-provider");
 const mysql = require('mysql2/promise');
 const { successResponse, errorResponse } = require('response-utils');
 
-const cognito = new AWS.CognitoIdentityServiceProvider();
+const cognitoClient = new CognitoIdentityProviderClient({ region: process.env.MY_REGION });
 
 exports.handler = async (event) => {
     if (event.httpMethod !== 'POST') {
@@ -28,14 +28,16 @@ exports.handler = async (event) => {
             }
         };
 
-        const authResult = await cognito.initiateAuth(authParams).promise();
-        const token = authResult.AuthenticationResult.IdToken;
+        const authCommand = new InitiateAuthCommand(authParams);
+        const authResult = await cognitoClient.send(authCommand);
+        const token = authResult.AuthenticationResult.AccessToken;
 
         // Cognitoからユーザー情報を取得
         const userParams = {
             AccessToken: authResult.AuthenticationResult.AccessToken
         };
-        const userInfo = await cognito.getUser(userParams).promise();
+        const getUserCommand = new GetUserCommand(userParams);
+        const userInfo = await cognitoClient.send(getUserCommand);
         const cognitoEmail = userInfo.Username;
 
         // RDSに接続
