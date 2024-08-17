@@ -2,13 +2,13 @@ import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:tamotsu/models/nutritionist.dart';
 import 'package:tamotsu/views/screens/login_screen.dart';
-import 'package:tamotsu/views/screens/initial_registration_user_screen.dart';
-import 'package:tamotsu/views/screens/initial_registration_nutritionist_screen.dart';
-import 'package:tamotsu/views/screens/register_screen.dart';
+import 'package:tamotsu/views/screens/register/initial_registration_user_screen.dart';
+import 'package:tamotsu/views/screens/register/initial_registration_nutritionist_screen.dart';
+import 'package:tamotsu/views/screens/register/register_screen.dart';
 import 'package:tamotsu/views/screens/home_screen.dart';
 import 'package:tamotsu/views/screens/test_screen.dart';
-import 'package:tamotsu/views/screens/nutritionist_list_screen.dart';
-import 'package:tamotsu/views/screens/nutritionist_detail_screen.dart';
+import 'package:tamotsu/views/screens/register/nutritionist_list_screen.dart';
+import 'package:tamotsu/views/screens/register/nutritionist_detail_screen.dart';
 // 他の画面もここにインポートしてください
 
 part 'app_router.gr.dart';
