@@ -696,6 +696,8 @@ locals {
         parent_id   = aws_api_gateway_resource.nutritionists_resource.id  # 親リソースを設定
       }
     }
+    # チャット部分は外出し
+    # チャット時の通信がwebsocketを使うため、通常の処理と異なる
   }
 }
 
@@ -1085,4 +1087,192 @@ resource "aws_route_table_association" "private_route_assoc1" {
 resource "aws_route_table_association" "private_route_assoc2" {
   subnet_id      = aws_subnet.private_subnet_2.id
   route_table_id = aws_route_table.private_route_table.id
+}
+
+# =============================================================
+# チャットサービス用
+# =============================================================
+# 証明書の作成
+resource "aws_acm_certificate" "ws_tamotsu" {
+  domain_name       = "ws.${var.my_domain}"
+  validation_method = "DNS"
+}
+
+resource "aws_acm_certificate_validation" "ws_tamotsu" {
+  certificate_arn = aws_acm_certificate.ws_tamotsu.arn
+}
+
+# apiサブドメイン
+resource "aws_api_gateway_domain_name" "ws_tamotsu_app" {
+  domain_name       = "ws.${var.my_domain}"  # サブドメイン
+  regional_certificate_arn = aws_acm_certificate_validation.ws_tamotsu.certificate_arn
+  endpoint_configuration {
+    types = ["REGIONAL"]
+  }
+  depends_on = [aws_acm_certificate_validation.ws_tamotsu]
+}
+
+# Route 53にAレコードを追加
+resource "aws_route53_record" "record_tamotsu_ws" {
+  zone_id = data.aws_route53_zone.tamotsu_app.zone_id
+  name    = "ws.${var.my_domain}"
+  type    = "A"
+
+  alias {
+    name                   = aws_api_gateway_domain_name.ws_tamotsu_app.regional_domain_name
+    zone_id                = aws_api_gateway_domain_name.ws_tamotsu_app.regional_zone_id
+    evaluate_target_health = true
+  }
+}
+
+
+# WebSocket APIの作成
+resource "aws_apigatewayv2_api" "websocket_api" {
+  name          = "tamotsu-websocket-api"
+  protocol_type = "WEBSOCKET"
+  route_selection_expression = "$request.body.action"
+}
+
+# WebSocketのルート設定
+resource "aws_apigatewayv2_route" "connect_route" {
+  api_id    = aws_apigatewayv2_api.websocket_api.id
+  route_key = "$connect"
+  target    = "integrations/${aws_apigatewayv2_integration.connect_integration.id}"
+}
+
+resource "aws_apigatewayv2_route" "message_route" {
+  api_id    = aws_apigatewayv2_api.websocket_api.id
+  route_key = "sendmessage"
+  target    = "integrations/${aws_apigatewayv2_integration.message_integration.id}"
+}
+
+resource "aws_apigatewayv2_route" "disconnect_route" {
+  api_id    = aws_apigatewayv2_api.websocket_api.id
+  route_key = "$disconnect"
+  target    = "integrations/${aws_apigatewayv2_integration.disconnect_integration.id}"
+}
+
+# WebSocketのインテグレーション設定
+# 各ルートに対して、Lambda関数を統合します。
+resource "aws_apigatewayv2_integration" "connect_integration" {
+  api_id           = aws_apigatewayv2_api.websocket_api.id
+  integration_type = "AWS_PROXY"
+  integration_uri  = aws_lambda_function.connect_function.arn
+}
+
+resource "aws_apigatewayv2_integration" "message_integration" {
+  api_id           = aws_apigatewayv2_api.websocket_api.id
+  integration_type = "AWS_PROXY"
+  integration_uri  = aws_lambda_function.message_function.arn
+}
+
+resource "aws_apigatewayv2_integration" "disconnect_integration" {
+  api_id           = aws_apigatewayv2_api.websocket_api.id
+  integration_type = "AWS_PROXY"
+  integration_uri  = aws_lambda_function.disconnect_function.arn
+}
+
+# WebSocketのステージ設定
+resource "aws_apigatewayv2_stage" "websocket_stage" {
+  api_id      = aws_apigatewayv2_api.websocket_api.id
+  name        = "dev"
+  auto_deploy = true
+}
+
+resource "aws_apigatewayv2_api_mapping" "websocket_api_mapping" {
+  api_id      = aws_apigatewayv2_api.websocket_api.id
+  domain_name = aws_api_gateway_domain_name.ws_tamotsu_app.domain_name
+  stage       = aws_apigatewayv2_stage.websocket_stage.name
+}
+
+# Lambda関数の設定
+resource "aws_lambda_function" "connect_function" {
+  filename         = "../api/chat/connect/connect.zip"
+  function_name    = "tamotsu-chat_connect-function"
+  handler          = "connect.handler"
+  runtime          = "nodejs20.x"
+  role             = aws_iam_role.lambda_role.arn
+  environment {
+    variables = {
+      DB_HOST     = replace(aws_db_instance.tamotsu_db.endpoint, ":3306", ""),
+      DB_USER     = var.db_user,
+      DB_PASSWORD = var.db_password,
+      DB_NAME     = var.db_name,
+      MY_REGION   = var.region
+    }
+  }
+  layers = [
+    data.aws_lambda_layer_version.aws_sdk_layer.arn,
+    aws_lambda_layer_version.response-utils-layer.arn,
+    aws_lambda_layer_version.mysql2-layer.arn
+  ]
+}
+
+resource "aws_lambda_function" "message_function" {
+  filename         = "../api/chat/message/message.zip"
+  function_name    = "tamotsu-chat_message-function"
+  handler          = "message.handler"
+  runtime          = "nodejs20.x"
+  role             = aws_iam_role.lambda_role.arn
+  environment {
+    variables = {
+      DB_HOST     = replace(aws_db_instance.tamotsu_db.endpoint, ":3306", ""),
+      DB_USER     = var.db_user,
+      DB_PASSWORD = var.db_password,
+      DB_NAME     = var.db_name,
+      MY_REGION   = var.region
+    }
+  }
+  layers = [
+    data.aws_lambda_layer_version.aws_sdk_layer.arn,
+    aws_lambda_layer_version.response-utils-layer.arn,
+    aws_lambda_layer_version.mysql2-layer.arn
+  ]
+}
+
+resource "aws_lambda_function" "disconnect_function" {
+  filename         = "../api/chat/disconnect/disconnect.zip"
+  function_name    = "tamotsu-chat_disconnect-function"
+  handler          = "disconnect.handler"
+  runtime          = "nodejs20.x"
+  role             = aws_iam_role.lambda_role.arn
+  environment {
+    variables = {
+      DB_HOST     = replace(aws_db_instance.tamotsu_db.endpoint, ":3306", ""),
+      DB_USER     = var.db_user,
+      DB_PASSWORD = var.db_password,
+      DB_NAME     = var.db_name,
+      MY_REGION   = var.region
+    }
+  }
+  layers = [
+    data.aws_lambda_layer_version.aws_sdk_layer.arn,
+    aws_lambda_layer_version.response-utils-layer.arn,
+    aws_lambda_layer_version.mysql2-layer.arn
+  ]
+}
+
+# Lambda関数にAPI Gatewayからのアクセスを許可
+resource "aws_lambda_permission" "allow_apigateway" {
+  statement_id  = "AllowExecutionFromAPIGateway"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.connect_function.arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.websocket_api.execution_arn}/*"
+}
+
+resource "aws_lambda_permission" "allow_apigateway_message" {
+  statement_id  = "AllowExecutionFromAPIGatewayMessage"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.message_function.arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.websocket_api.execution_arn}/*"
+}
+
+resource "aws_lambda_permission" "allow_apigateway_disconnect" {
+  statement_id  = "AllowExecutionFromAPIGatewayDisconnect"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.disconnect_function.arn
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.websocket_api.execution_arn}/*"
 }
