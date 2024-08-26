@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:tamotsu/models/nutritionist.dart';
 import 'package:auto_route/auto_route.dart';
 import 'package:tamotsu/routes/app_router.dart';
+import 'package:tamotsu/viewmodels/chat_view_model.dart';
 import 'package:tamotsu/viewmodels/user_view_model.dart';
 
 @RoutePage()
@@ -81,6 +82,9 @@ class NutritionistDetailScreen extends StatelessWidget {
   }
 
   void _showConfirmationDialog(BuildContext context) {
+    final userViewModel = Provider.of<UserViewModel>(context, listen: false);
+    final chatViewModel = Provider.of<ChatViewModel>(context, listen: false);
+
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
@@ -100,6 +104,8 @@ class NutritionistDetailScreen extends StatelessWidget {
                 _confirmSelection(context);
               },
             ),
+            if (userViewModel.isLoading || chatViewModel.isLoading)
+              CircularProgressIndicator(),
           ],
         );
       },
@@ -108,9 +114,11 @@ class NutritionistDetailScreen extends StatelessWidget {
 
   Future<void> _confirmSelection(BuildContext context) async {
     final userViewModel = Provider.of<UserViewModel>(context, listen: false);
+    final chatViewModel = Provider.of<ChatViewModel>(context, listen: false);
 
     try {
       await userViewModel.selectNutritionist(nutritionist.nutritionist_id);
+      await chatViewModel.createChat(nutritionist.nutritionist_id);
 
       // ホーム画面に戻る
       context.router.push(HomeRoute());

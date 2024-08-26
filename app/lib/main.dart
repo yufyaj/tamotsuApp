@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:tamotsu/services/auth_service.dart';
+import 'package:tamotsu/services/chat_service.dart';
+import 'package:tamotsu/services/database_service.dart';
 import 'package:tamotsu/services/nutritionist_service.dart';
 import 'package:tamotsu/services/user_service.dart';
 import 'package:tamotsu/viewmodels/auth_view_model.dart';
 import 'package:tamotsu/routes/app_router.dart';
+import 'package:tamotsu/viewmodels/chat_view_model.dart';
 import 'package:tamotsu/viewmodels/nutritionist_view_model.dart';
 import 'package:tamotsu/viewmodels/user_view_model.dart';
 import 'package:uni_links/uni_links.dart';
@@ -20,15 +23,17 @@ void main() async {
   };
 
   final appRouter = AppRouter();
-  final baseUrl = 'https://api.tamotsu-app.com';
+  const baseUrl = 'https://api.tamotsu-app.com';
+  const socketUrl = 'wss://ws.tamotsu-app.com/';
   final authService = AuthService(baseUrl: baseUrl);
   
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => AuthViewModel(authService: authService)),
-        ChangeNotifierProvider(create: (_) => UserViewModel(userService: UserService(authService: authService, baseUrl: baseUrl))),
-        ChangeNotifierProvider(create: (_) => NutritionistViewModel(nutritionistService: NutritionistService(authService: authService, baseUrl: baseUrl))),
+        ChangeNotifierProvider(create: (context) => AuthViewModel(authService: authService)),
+        ChangeNotifierProvider(create: (context) => UserViewModel(userService: UserService(authService: authService, baseUrl: baseUrl))),
+        ChangeNotifierProvider(create: (context) => NutritionistViewModel(nutritionistService: NutritionistService(authService: authService, baseUrl: baseUrl))),
+        ChangeNotifierProvider(create: (context) => ChatViewModel(chatService: ChatService(authService: authService, socketUrl: socketUrl, baseUrl: baseUrl), databaseService: DatabaseService())),
         // 他のViewModelもここに追加
       ],
       child: TamotsuApp(appRouter: appRouter),

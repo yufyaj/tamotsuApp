@@ -7,9 +7,8 @@ CREATE TABLE IF NOT EXISTS users (
     age DECIMAL(3),
     gender VARCHAR(50),
     height DECIMAL(5, 2),
-    weight DECIMAL(5, 2),
     allergies TEXT,
-    goal TEXT,
+    goals TEXT,
     dietary_restrictions TEXT,
     disliked_foods TEXT,
     health_concerns TEXT,
@@ -62,9 +61,9 @@ CREATE TABLE IF NOT EXISTS chats (
     chat_id VARCHAR(255) PRIMARY KEY,
     user_id VARCHAR(255),
     nutritionist_id VARCHAR(255),
-    start_time TIMESTAMP,
-    end_time TIMESTAMP,
-    status VARCHAR(50)
+    status VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    unique user_id_nutritionist_id_index (user_id, nutritionist_id)
 )  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -72,6 +71,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     timestamp TIMESTAMP,
     sender_id VARCHAR(255),
     content TEXT,
+    content_type VARCHAR(255),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (chat_id, timestamp)
 )  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -96,4 +96,10 @@ CREATE TABLE sequence_table (
     sequence_name VARCHAR(50) NOT NULL,
     current_value INT NOT NULL,
     PRIMARY KEY (sequence_name)
+)  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS connections (
+    connection_id VARCHAR(255) PRIMARY KEY,
+    connector_id VARCHAR(255),
+    connected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )  CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;

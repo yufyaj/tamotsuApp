@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart'; // FlutterのUIライブラリをインポート
-import 'package:tamotsu/services/user_service.dart'; // UserServiceをインポート
+import 'package:tamotsu/services/user_service.dart';
 
 class UserViewModel extends ChangeNotifier {
-  final UserService userService; // UserServiceのインスタンス
+  final UserService   userService; // UserServiceのインスタンス
 
   // コンストラクタでUserServiceのインスタンスを受け取る
   UserViewModel({required this.userService});
@@ -13,7 +13,7 @@ class UserViewModel extends ChangeNotifier {
   Map<String, dynamic>? _publicProfile; // 公開プロフィールを保持する変数
   Map<String, dynamic>? get publicProfile => _publicProfile; // 公開プロフィールを取得するゲッター
 
-  bool _isLoading = false; // ローディング状態を示すフラグ
+  bool _isLoading    = false; // ローディング状態を示すフラグ
   bool get isLoading => _isLoading; // ローディング状態を取得するゲッター
 
   // ユーザープロフィールを取得するメソッド

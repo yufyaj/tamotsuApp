@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:tamotsu/routes/app_router.dart';
 import 'package:tamotsu/viewmodels/auth_view_model.dart';
+import 'package:tamotsu/viewmodels/chat_view_model.dart';
 
 @RoutePage()
 class LoginScreen extends StatefulWidget {
@@ -18,13 +19,16 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
       final authViewModel = Provider.of<AuthViewModel>(context, listen: false);
+      final chatViewModel = Provider.of<ChatViewModel>(context, listen: false);
 
       try {
         final success = await authViewModel.login(_email, _password);
         if (success) {
+          await chatViewModel.connect();
           final userType = await authViewModel.getAuthUserType();
           if (userType == 'user') {
-            context.router.push(const HomeRoute());
+            context.router.push(const UserHomeRoute());
+
           } else if(userType == 'nutritionist') {
             context.router.push(const HomeRoute());
           } else {

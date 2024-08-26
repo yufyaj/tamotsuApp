@@ -15,6 +15,12 @@ abstract class _$AppRouter extends RootStackRouter {
 
   @override
   final Map<String, PageFactory> pagesMap = {
+    ChatRoute.name: (routeData) {
+      return AutoRoutePage<dynamic>(
+        routeData: routeData,
+        child: ChatScreen(),
+      );
+    },
     HomeRoute.name: (routeData) {
       return AutoRoutePage<dynamic>(
         routeData: routeData,
@@ -93,7 +99,33 @@ abstract class _$AppRouter extends RootStackRouter {
         child: const TestScreen(),
       );
     },
+    UserHomeRoute.name: (routeData) {
+      return AutoRoutePage<dynamic>(
+        routeData: routeData,
+        child: UserHomeScreen(),
+      );
+    },
+    UserProfileEditRoute.name: (routeData) {
+      return AutoRoutePage<dynamic>(
+        routeData: routeData,
+        child: const UserProfileEditScreen(),
+      );
+    },
   };
+}
+
+/// generated route for
+/// [ChatScreen]
+class ChatRoute extends PageRouteInfo<void> {
+  const ChatRoute({List<PageRouteInfo>? children})
+      : super(
+          ChatRoute.name,
+          initialChildren: children,
+        );
+
+  static const String name = 'ChatRoute';
+
+  static const PageInfo<void> page = PageInfo<void>(name);
 }
 
 /// generated route for
@@ -324,6 +356,34 @@ class TestRoute extends PageRouteInfo<void> {
         );
 
   static const String name = 'TestRoute';
+
+  static const PageInfo<void> page = PageInfo<void>(name);
+}
+
+/// generated route for
+/// [UserHomeScreen]
+class UserHomeRoute extends PageRouteInfo<void> {
+  const UserHomeRoute({List<PageRouteInfo>? children})
+      : super(
+          UserHomeRoute.name,
+          initialChildren: children,
+        );
+
+  static const String name = 'UserHomeRoute';
+
+  static const PageInfo<void> page = PageInfo<void>(name);
+}
+
+/// generated route for
+/// [UserProfileEditScreen]
+class UserProfileEditRoute extends PageRouteInfo<void> {
+  const UserProfileEditRoute({List<PageRouteInfo>? children})
+      : super(
+          UserProfileEditRoute.name,
+          initialChildren: children,
+        );
+
+  static const String name = 'UserProfileEditRoute';
 
   static const PageInfo<void> page = PageInfo<void>(name);
 }

@@ -133,31 +133,16 @@ async function handlePostRequest(event) {
 
         console.log("debug_log_7: confirm cognito");
 
-        // ログイン処理
-        const loginParams = {
-            AuthFlow: 'ADMIN_NO_SRP_AUTH',
-            UserPoolId: userPoolId,
-            ClientId: clientId,
-            AuthParameters: {
-                USERNAME: email,
-                PASSWORD: password,
-            },
-        };
-        const loginResponse = await cognitoClient.send(new AdminInitiateAuthCommand(loginParams));
-        const token = loginResponse.AuthenticationResult.AccessToken;
-        
-        console.log("debug_log_8: loggedin cognito");
-
         // temp_usersテーブルから該当のレコードを削除
         await connection.execute(
             'DELETE FROM temp_users WHERE email = ?',
             [email]
         );
-        console.log("debug_log_9: delete tempUser");
+        console.log("debug_log_8: delete tempUser");
 
         await connection.commit();
 
-        return successResponse({ message: 'ユーザーの登録が完了しました', token: token});
+        return successResponse({ message: 'ユーザーの登録が完了しました' });
     } catch (error) {
         await connection.rollback();
         console.error('Error:', error);

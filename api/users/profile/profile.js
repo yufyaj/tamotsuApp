@@ -1,9 +1,9 @@
-const { CognitoIdentityProviderClient, GetUserCommand } = require("@aws-sdk/client-cognito-identity-provider");
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 const mysql = require('mysql2/promise');
 const { successResponse, errorResponse } = require('response-utils');
+const { verifyAccessToken } = require('token-handler');
+const { getBase64Image } = require('image-utils');
 
-const cognitoClient = new CognitoIdentityProviderClient({ region: process.env.MY_REGION });
 const s3Client = new S3Client({ region: process.env.MY_REGION });
 
 exports.handler = async (event) => {
@@ -23,25 +23,89 @@ exports.handler = async (event) => {
 };
 
 async function handleGetRequest(event) {
-    // GET request handling (if needed)
+    console.log("debug_log_0: start");
+
+    const token = event.headers.Authorization.split(' ')[1];
+    const { result, userId } = await verifyAccessToken(token);
+    if (!result || !userId) {
+        return errorResponse('トークン検証に失敗しました', 401);
+    }
+
+    console.log("debug_log_1: verified token");
+
+    let connection;
+    try {
+        // データベース接続
+        connection = await mysql.createConnection({
+            host: process.env.DB_HOST,
+            user: process.env.DB_USER,
+            password: process.env.DB_PASSWORD,
+            database: process.env.DB_NAME
+        });
+
+        console.log("debug_log_2: connected db");
+
+        const [userRows] = await connection.execute("SELECT * FROM users WHERE user_id = ?", [userId]);
+        if (userRows.length == 0) {
+            return errorResponse('failed user request');
+        }
+
+        console.log("debug_log_3: selected user data");
+
+        const userRow = userRows[0];
+        const profileImageUrl = userRow.profile_image_url;
+        const key = profileImageUrl.split(`https://${process.env.S3_BUCKET_NAME}.s3.amazonaws.com/`)[1];
+        if (profileImageUrl) {
+            const response = {
+                name: userRow.name,
+                age: userRow.age,
+                gender: userRow.gender,
+                height: userRow.height,
+                allergies: userRow.allergies,
+                goals: userRow.goals,
+                dietary_restrictions: userRow.dietary_restrictions,
+                disliked_foods: userRow.disliked_foods,
+                health_concerns: userRow.health_concerns,
+                profile_image: await getBase64Image(process.env.S3_BUCKET_NAME, key) // 画像をbase64変換して追加
+            };
+            return successResponse(response);
+        } else {
+            const response = {
+                name: userRow.name,
+                age: userRow.age,
+                gender: userRow.gender,
+                height: userRow.height,
+                allergies: userRow.allergies,
+                goals: userRow.goals,
+                dietary_restrictions: userRow.dietary_restrictions,
+                disliked_foods: userRow.disliked_foods,
+                health_concerns: userRow.health_concerns,
+                profile_image: null
+            };
+            return successResponse(response);
+        }
+    } catch (error){
+        console.log(error);
+        return errorResponse('プロフィールの取得に失敗しました');
+    } finally {
+        if (connection) await connection.end();
+    }
 }
 
 async function handlePutRequest(event) {
-    const token = event.headers.Authorization.split(' ')[1];
-    const userPoolId = process.env.COGNITO_USER_POOL_ID;
-
     console.log("debug_log_0: start");
+
+    const token = event.headers.Authorization.split(' ')[1];
+    const { result, userId } = await verifyAccessToken(token);
+    if (!result || !userId) {
+        return errorResponse('トークン検証に失敗しました', 401);
+    }
+
+    console.log("debug_log_1: verified token");
 
     let connection;
 
     try {
-        // Cognitoからユーザー情報を取得
-        const getUserCommand = new GetUserCommand({ AccessToken: token });
-        const user = await cognitoClient.send(getUserCommand);
-        const userId = user.UserAttributes.find(attr => attr.Name === 'custom:userId').Value;
-
-        console.log("debug_log_1: checked cognito user");
-
         // リクエストボディをパース
         const profileData = JSON.parse(event.body);
 
@@ -49,7 +113,7 @@ async function handlePutRequest(event) {
         let profileImageUrl = null;
         if (profileData.profileImage) {
             const buffer = Buffer.from(profileData.profileImage, 'base64');
-            const key = `profile-images/${userId}-${Date.now()}.jpg`;
+            const key = `profile-images/${userId}.jpg`;
             const putObjectCommand = new PutObjectCommand({
                 Bucket: process.env.S3_BUCKET_NAME,
                 Key: key,
@@ -84,13 +148,11 @@ async function handlePutRequest(event) {
                 age = ?,
                 gender = ?,
                 height = ?,
-                weight = ?,
                 allergies = ?,
-                goal = ?,
+                goals = ?,
                 dietary_restrictions = ?,
                 disliked_foods = ?,
                 health_concerns = ?,
-                profile_image_url = ?
             WHERE user_id = ?
         `;
 
@@ -99,15 +161,28 @@ async function handlePutRequest(event) {
             profileData.age,
             profileData.gender,
             profileData.height,
-            profileData.weight,
             JSON.stringify(profileData.allergies),
-            profileData.goal,
+            profileData.goals,
             JSON.stringify(profileData.dietaryRestrictions),
             profileData.dislikedFoods,
             JSON.stringify(profileData.healthConcerns),
-            profileImageUrl,
             userId
         ]);
+
+        if (profileImageUrl != null) {
+            /* プロフィール画像を再指定しない場合、NULLで更新しないために本対応を実施 */
+            const updateProfileUrlQuery = `
+                UPDATE users 
+                SET 
+                    profile_image_url = ?
+                WHERE user_id = ?
+            `;
+
+            await connection.execute(updateProfileUrlQuery, [
+                profileImageUrl,
+                userId
+            ]);
+        }
 
         console.log("debug_log_4: updated user data");
 

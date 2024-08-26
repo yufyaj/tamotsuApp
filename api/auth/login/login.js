@@ -30,11 +30,12 @@ exports.handler = async (event) => {
 
         const authCommand = new InitiateAuthCommand(authParams);
         const authResult = await cognitoClient.send(authCommand);
-        const token = authResult.AuthenticationResult.AccessToken;
+        const accessToken = authResult.AuthenticationResult.AccessToken;
+        const refreshToken = authResult.AuthenticationResult.RefreshToken;
 
         // Cognitoからユーザー情報を取得
         const userParams = {
-            AccessToken: authResult.AuthenticationResult.AccessToken
+            AccessToken: accessToken
         };
         const getUserCommand = new GetUserCommand(userParams);
         const userInfo = await cognitoClient.send(getUserCommand);
@@ -54,7 +55,8 @@ exports.handler = async (event) => {
             if (userRows.length > 0) {
                 return successResponse({
                     message: 'Login successful',
-                    token: token,
+                    access_token: accessToken,
+                    refresh_token: refreshToken,
                     userType: 'user'
                 });
             }
@@ -64,7 +66,8 @@ exports.handler = async (event) => {
             if (nutritionistRows.length > 0) {
                 return successResponse({
                     message: 'Login successful',
-                    token: token,
+                    access_token: accessToken,
+                    refresh_token: refreshToken,
                     userType: 'nutritionist'
                 });
             }

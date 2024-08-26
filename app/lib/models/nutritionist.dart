@@ -17,20 +17,20 @@ class Nutritionist {
     required this.availableHours,
   });
 
-    factory Nutritionist.fromJson(Map<String, dynamic> json) {
-      return Nutritionist(
-        nutritionist_id: json['nutritionistId'],
-        name: json['name'] ?? '',
-        imageUrl: json['imageUrl'] ?? '',
-        introduction: json['introduce'] ?? '',
-        specialties: (json['specialties'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
-        registeredUsers: json['registeredUsers'] ?? 0,
-        availableHours: (json['availableHours'] as Map<String, dynamic>?)?.map(
-          (key, value) => MapEntry(
-            key,
-            (value as List<dynamic>).map((e) => e as String).toList(),
-          ),
-        ) ?? {},
-      );
-    }
+  factory Nutritionist.fromJson(Map<String, dynamic> json) {
+    return Nutritionist(
+      nutritionist_id: json['nutritionistId'],
+      name: json['name'] ?? '',
+      imageUrl: json['imageUrl'] ?? '',
+      introduction: json['introduce'] ?? '',
+      specialties: (json['specialties'] as List<dynamic>?)?.map((e) => e as String).toList() ?? [],
+      registeredUsers: json['registeredUsers'] ?? 0,
+      availableHours: (json['availableHours'] as Map<String, dynamic>?)?.map(
+        (key, value) => MapEntry(
+          key,
+          (value as List<dynamic>).map((e) => e as String).toList(),
+        ),
+      ) ?? {},
+    );
+  }
 }

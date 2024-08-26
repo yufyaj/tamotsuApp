@@ -9,7 +9,10 @@ class NutritionistService {
   NutritionistService({required this.baseUrl, required this.authService});
 
   Future<Map<String, dynamic>> getNutritionistProfile() async {
-    final token = await authService.getStoredToken();
+    final verifyResult = await authService.verifyAccessTokenAutoRefresh();
+    if (!verifyResult) { throw Exception('Verificate accessToken error.'); }
+
+    final token = await authService.getStoredAccessToken();
     if (token == null) {
       throw Exception('Token not found');
     }
@@ -29,7 +32,10 @@ class NutritionistService {
   }
 
   Future<Map<String, dynamic>> updateNutritionistProfile(Map<String, dynamic> profileData) async {
-    final token = await authService.getStoredToken();
+    final verifyResult = await authService.verifyAccessTokenAutoRefresh();
+    if (!verifyResult) { throw Exception('Verificate accessToken error.'); }
+
+    final token = await authService.getStoredAccessToken();
     if (token == null) {
       throw Exception('Token not found');
     }
@@ -57,7 +63,10 @@ class NutritionistService {
   }
 
   Future<Map<String, dynamic>> getNutritionistPublicProfile(String nutritionistId) async {
-    final token = await authService.getStoredToken();
+    final verifyResult = await authService.verifyAccessTokenAutoRefresh();
+    if (!verifyResult) { throw Exception('Verificate accessToken error.'); }
+
+    final token = await authService.getStoredAccessToken();
     if (token == null) {
       throw Exception('Token not found');
     }
@@ -81,7 +90,10 @@ class NutritionistService {
     int page = 1,
     int perPage = 10,
   }) async {
-    final token = await authService.getStoredToken();
+    final verifyResult = await authService.verifyAccessTokenAutoRefresh();
+    if (!verifyResult) { throw Exception('Verificate accessToken error.'); }
+
+    final token = await authService.getStoredAccessToken();
     if (token == null) {
       throw Exception('Token not found');
     }

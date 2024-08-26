@@ -3,7 +3,6 @@ import '../services/auth_service.dart'; // AuthServiceをインポート
 
 class AuthViewModel extends ChangeNotifier {
   final AuthService _authService; // AuthServiceのインスタンス
-  String? _token; // 認証トークンを保持する変数
   bool _isLoading = false; // ローディング状態を示すフラグ
   String? _error; // エラーメッセージを保持する変数
 
@@ -15,9 +14,6 @@ class AuthViewModel extends ChangeNotifier {
 
   // エラーメッセージを取得するゲッター
   String? get error => _error;
-
-  // 認証状態を取得するゲッター
-  bool get isAuthenticated => _token != null;
 
   // ユーザー登録メソッド
   Future<bool> register(String email, String userType) async {
@@ -45,7 +41,7 @@ class AuthViewModel extends ChangeNotifier {
     notifyListeners(); // リスナーに通知
 
     try {
-      _token = await _authService.login(email, password); // AuthServiceを使用してログイン
+      await _authService.login(email, password); // AuthServiceを使用してログイン
       _isLoading = false; // ローディング状態をfalseに設定
       notifyListeners(); // リスナーに通知
       return true; // ログイン成功の場合はtrueを返す
@@ -83,7 +79,6 @@ class AuthViewModel extends ChangeNotifier {
 
     try {
       await _authService.logout(); // AuthServiceを使用してログアウト
-      _token = null; // トークンをクリア
       _isLoading = false; // ローディング状態をfalseに設定
       notifyListeners(); // リスナーに通知
     } catch (e) {
@@ -108,22 +103,6 @@ class AuthViewModel extends ChangeNotifier {
       _isLoading = false; // ローディング状態をfalseに設定
       notifyListeners(); // リスナーに通知
       return null;
-    }
-  }
-
-  // 認証状態をチェックするメソッド
-  Future<void> checkAuthStatus() async {
-    _isLoading = true; // ローディング状態をtrueに設定
-    notifyListeners(); // リスナーに通知
-
-    try {
-      _token = await _authService.getStoredToken(); // 保存されたトークンを取得
-      _isLoading = false; // ローディング状態をfalseに設定
-      notifyListeners(); // リスナーに通知
-    } catch (e) {
-      _error = e.toString(); // エラーメッセージを設定
-      _isLoading = false; // ローディング状態をfalseに設定
-      notifyListeners(); // リスナーに通知
     }
   }
 }

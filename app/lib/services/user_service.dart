@@ -11,7 +11,10 @@ class UserService {
 
   // ユーザープロフィールを取得するメソッド
   Future<Map<String, dynamic>> getUserProfile() async {
-    final token = await authService.getStoredToken(); // 保存されたトークンを取得
+    final verifyResult = await authService.verifyAccessTokenAutoRefresh();
+    if (!verifyResult) { throw Exception('Verificate accessToken error.'); }
+
+    final token = await authService.getStoredAccessToken(); // 保存されたトークンを取得
     if (token == null) {
       throw Exception('Token not found'); // トークンが見つからない場合のエラーハンドリング
     }
@@ -34,7 +37,10 @@ class UserService {
 
   // ユーザープロフィールを更新するメソッド
   Future<Map<String, dynamic>> updateUserProfile(Map<String, dynamic> profileData) async {
-    final token = await authService.getStoredToken(); // 保存されたトークンを取得
+    final verifyResult = await authService.verifyAccessTokenAutoRefresh();
+    if (!verifyResult) { throw Exception('Verificate accessToken error.'); }
+
+    final token = await authService.getStoredAccessToken(); // 保存されたトークンを取得
     if (token == null) {
       throw Exception('Token not found'); // トークンが見つからない場合のエラーハンドリング
     }
@@ -59,7 +65,10 @@ class UserService {
 
   // 特定ユーザーの公開プロフィールを取得するメソッド
   Future<Map<String, dynamic>> getUserPublicProfile(String userId) async {
-    final token = await authService.getStoredToken(); // 保存されたトークンを取得
+    final verifyResult = await authService.verifyAccessTokenAutoRefresh();
+    if (!verifyResult) { throw Exception('Verificate accessToken error.'); }
+
+    final token = await authService.getStoredAccessToken(); // 保存されたトークンを取得
     if (token == null) {
       throw Exception('Token not found'); // トークンが見つからない場合のエラーハンドリング
     }
@@ -82,7 +91,10 @@ class UserService {
 
   // 特定ユーザーの公開プロフィールを取得するメソッド
   Future<void> selectNutritionist(String nutritionistId) async {
-    final token = await authService.getStoredToken(); // 保存されたトークンを取得
+    final verifyResult = await authService.verifyAccessTokenAutoRefresh();
+    if (!verifyResult) { throw Exception('Verificate accessToken error.'); }
+
+    final token = await authService.getStoredAccessToken(); // 保存されたトークンを取得
     if (token == null) {
       throw Exception('Token not found'); // トークンが見つからない場合のエラーハンドリング
     }

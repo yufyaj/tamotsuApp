@@ -68,6 +68,11 @@ class _InitialRegistrationNutritionistScreenState extends State<InitialRegistrat
         throw Exception('登録に失敗しました');
       }
 
+      final loginSuccess = await authViewModel.login(email, _password);
+      if (!loginSuccess) {
+        throw Exception('ログインに失敗しました');
+      }
+
       final Map<String, dynamic> data = {
         "name": name,
         "profileImage": profileImage != null ? await File(profileImage!.path).readAsBytes() : null,
@@ -89,6 +94,10 @@ class _InitialRegistrationNutritionistScreenState extends State<InitialRegistrat
 
   @override
   Widget build(BuildContext context) {
+    final authViewModel         = Provider.of<AuthViewModel>(context, listen: false);
+    final nutritionistViewModel = Provider.of<NutritionistViewModel>(context, listen: false);
+
+
     return Scaffold(
       appBar: AppBar(
         title: Text('栄養士初期登録'),
@@ -242,6 +251,8 @@ class _InitialRegistrationNutritionistScreenState extends State<InitialRegistrat
                         onPressed: submitForm,
                         child: Text('登録'),
                       ),
+                      if (authViewModel.isLoading || nutritionistViewModel.isLoading)
+                        CircularProgressIndicator(),
                     ],
                   ),
                 ),

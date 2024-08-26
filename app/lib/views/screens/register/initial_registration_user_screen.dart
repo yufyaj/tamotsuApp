@@ -36,9 +36,8 @@ class _InitialRegistrationScreenState extends State<InitialRegistrationUserScree
   int? age;
   String? gender;
   double? height;
-  double? weight;
   List<String> allergies = [];
-  String? goal;
+  String? goals;
   List<String> dietaryRestrictions = [];
   String dislikedFoods = '';
   List<String> healthConcerns = [];
@@ -66,14 +65,17 @@ class _InitialRegistrationScreenState extends State<InitialRegistrationUserScree
       _formKey.currentState!.save();
 
       final authViewModel = Provider.of<AuthViewModel>(context, listen: false);
-
-      final verification_success = await authViewModel.verifyEmail(verificationCode, email, _password);
-        
-      if (!verification_success) {
+      final success = await authViewModel.verifyEmail(verificationCode, email, _password);
+      if (!success) {
         // TODO: パスワードのどこで引っ掛かったかをエラー表示する
         throw Exception('登録に失敗しました');
       }
 
+      final loginSuccess = await authViewModel.login(email, _password);
+      if (!loginSuccess) {
+        throw Exception('ログインに失敗しました');
+      }
+        
       try {
         final Map<String, dynamic> data = {
         "name": name,
@@ -81,9 +83,8 @@ class _InitialRegistrationScreenState extends State<InitialRegistrationUserScree
         "age": age,
         "gender": gender,
         "height": height,
-        "weight": weight,
         "allergies": allergies,
-        "goal": goal,
+        "goals": goals,
         "dietaryRestrictions": dietaryRestrictions,
         "dislikedFoods": dislikedFoods,
         "healthConcerns": healthConcerns
@@ -106,6 +107,9 @@ class _InitialRegistrationScreenState extends State<InitialRegistrationUserScree
 
   @override
   Widget build(BuildContext context) {
+    final authViewModel = Provider.of<AuthViewModel>(context, listen: false);
+    final userViewModel = Provider.of<UserViewModel>(context, listen: false);
+
     return Scaffold(
       appBar: AppBar(
         title: Text('初期登録'),
@@ -191,12 +195,6 @@ class _InitialRegistrationScreenState extends State<InitialRegistrationUserScree
                         validator: (value) => value!.isEmpty ? '身長を入力してください' : null,
                         onSaved: (value) => height = double.parse(value!),
                       ),
-                      TextFormField(
-                        decoration: InputDecoration(labelText: '体重 (kg)'),
-                        keyboardType: TextInputType.number,
-                        validator: (value) => value!.isEmpty ? '体重を入力してください' : null,
-                        onSaved: (value) => weight = double.parse(value!),
-                      ),
                       // アレルギー情報
                       Text('アレルギー情報'),
                       Wrap(
@@ -241,14 +239,14 @@ class _InitialRegistrationScreenState extends State<InitialRegistrationUserScree
                             child: Text(value),
                           );
                         }).toList(),
-                        onChanged: (value) => setState(() => goal = value),
+                        onChanged: (value) => setState(() => goals = value),
                         validator: (value) => value == null ? '目標を選択してください' : null,
                       ),
                       TextFormField(
                         decoration: InputDecoration(labelText: 'その他の目標（自由記入）'),
                         onSaved: (value) {
                           if (value != null && value.isNotEmpty) {
-                            goal = value;
+                            goals = value;
                           }
                         },
                       ),
@@ -326,6 +324,8 @@ class _InitialRegistrationScreenState extends State<InitialRegistrationUserScree
                         onPressed: submitForm,
                         child: Text('次へ'),
                       ),
+                      if (authViewModel.isLoading || userViewModel.isLoading)
+                        CircularProgressIndicator(),
                     ],
                   ),
                 ),

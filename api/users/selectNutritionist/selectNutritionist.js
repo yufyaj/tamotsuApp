@@ -1,29 +1,24 @@
-const { CognitoIdentityProviderClient, GetUserCommand } = require("@aws-sdk/client-cognito-identity-provider");
 const mysql = require('mysql2/promise');
 const { successResponse, errorResponse } = require('response-utils');
-
-const cognitoClient = new CognitoIdentityProviderClient({ region: process.env.MY_REGION });
+const { verifyAccessToken } = require('token-handler');
 
 exports.handler = async (event) => {
     if (event.httpMethod !== 'PUT') {
         return errorResponse('Method Not Allowed', 405);
     }
 
-    const token = event.headers.Authorization?.split(' ')[1];
-    if (!token) {
-        return errorResponse('Authorization token is missing', 401);
+    console.log("debug_log_0: start");
+
+    const token = event.headers.Authorization.split(' ')[1];
+    const { result, userId } = await verifyAccessToken(token);
+    if (!result || !userId) {
+        return errorResponse('トークン検証に失敗しました', 401);
     }
+    console.log("debug_log_1: verified token");
 
     let connection;
 
     try {
-        console.log('debug_log_1:start');
-        // トークンの有効性を確認し、ユーザー情報を取得
-        const getUserCommand = new GetUserCommand({ AccessToken: token });
-        const user = await cognitoClient.send(getUserCommand);
-        const userId = user.UserAttributes.find(attr => attr.Name === 'custom:userId').Value;
-        console.log('debug_log_2:checked cognito');
-
         // リクエストボディをパース
         const { nutritionistId } = JSON.parse(event.body);
 

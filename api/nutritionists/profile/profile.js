@@ -1,9 +1,8 @@
-const { CognitoIdentityProviderClient, GetUserCommand } = require("@aws-sdk/client-cognito-identity-provider");
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 const mysql = require('mysql2/promise');
 const { successResponse, errorResponse } = require('response-utils');
+const { verifyAccessToken } = require('token-handler');
 
-const cognitoClient = new CognitoIdentityProviderClient({ region: process.env.MY_REGION });
 const s3Client = new S3Client({ region: process.env.MY_REGION });
 
 exports.handler = async (event) => {
@@ -26,21 +25,19 @@ async function handleGetRequest(event) {
 }
 
 async function handlePutRequest(event) {
-    const token = event.headers.Authorization.split(' ')[1];
-    const userPoolId = process.env.COGNITO_USER_POOL_ID;
-
     console.log("debug_log_0: start");
+
+    const token = event.headers.Authorization.split(' ')[1];
+    const { result, nutritionistId } = await verifyAccessToken(token);
+    if (!result || !nutritionistId) {
+        return errorResponse('トークン検証に失敗しました', 401);
+    }
+
+    console.log("debug_log_1: verified token");
 
     let connection;
 
-    try {
-        // Cognitoから栄養士情報を取得
-        const getUserCommand = new GetUserCommand({ AccessToken: token });
-        const user = await cognitoClient.send(getUserCommand);
-        const nutritionistId = user.UserAttributes.find(attr => attr.Name === 'custom:nutritionistId').Value;
-
-        console.log("debug_log_1: checked cognito");
-        
+    try {        
         // リクエストボディをパース
         const profileData = JSON.parse(event.body);
 

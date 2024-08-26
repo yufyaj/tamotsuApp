@@ -12,6 +12,12 @@ variable "my_ip" {}
 variable "my_domain" {
   default = "tamotsu-app.com"
 }
+variable "my_api_domain" {
+  default = "api.tamotsu-app.com"
+}
+variable "my_ws_domain" {
+  default = "ws.tamotsu-app.com"
+}
 variable "region" {
   default = "ap-northeast-1"
 }
@@ -201,6 +207,9 @@ locals {
     }
     cognito_access           = {
       policy_arn = "arn:aws:iam::aws:policy/AmazonCognitoPowerUser"
+    }
+    execute_api_permission   = {
+      policy_arn = "arn:aws:iam::aws:policy/AmazonAPIGatewayInvokeFullAccess"
     }
   }
 }
@@ -513,7 +522,7 @@ resource "aws_s3_bucket_policy" "tamotsu_webapp" {
 
 # 証明書の作成
 resource "aws_acm_certificate" "api_tamotsu" {
-  domain_name       = "api.${var.my_domain}"
+  domain_name       = var.my_api_domain
   validation_method = "DNS"
 }
 
@@ -530,7 +539,7 @@ resource "aws_acm_certificate_validation" "api_tamotsu" {
 
 # apiサブドメイン
 resource "aws_api_gateway_domain_name" "tamotsu_app" {
-  domain_name       = "api.${var.my_domain}"  # サブドメイン (例: api)
+  domain_name       = var.my_api_domain  # サブドメイン (例: api)
   regional_certificate_arn = aws_acm_certificate_validation.api_tamotsu.certificate_arn
   endpoint_configuration {
     types = ["REGIONAL"]
@@ -546,7 +555,7 @@ data "aws_route53_zone" "tamotsu_app" {
 # Route 53にAレコードを追加
 resource "aws_route53_record" "record_tamotsu_app" {
   zone_id = data.aws_route53_zone.tamotsu_app.zone_id
-  name    = "api.${var.my_domain}"
+  name    = var.my_api_domain
   type    = "A"
 
   alias {
@@ -627,7 +636,6 @@ locals {
         handler  = "register.handler"
         env_vars = {
           FROM_EMAIL_ADDRESS          = var.send_mail_address
-          COGNITO_USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.client.id
           COGNITO_USER_POOL_ID        = aws_cognito_user_pool.tamotsu_user_pool.id
         }
         http_method = "POST"
@@ -637,7 +645,6 @@ locals {
         filename = "../api/auth/login/login.zip"
         handler  = "login.handler"
         env_vars = {
-          COGNITO_USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.client.id
         }
         http_method = "POST"
         parent_id   = aws_api_gateway_resource.auth_resource.id  # 親リソースを設定
@@ -647,7 +654,22 @@ locals {
         handler  = "verify-email.handler"
         env_vars = {
           COGNITO_USER_POOL_ID = aws_cognito_user_pool.tamotsu_user_pool.id
-          COGNITO_USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.client.id
+        }
+        http_method = "POST"
+        parent_id   = aws_api_gateway_resource.auth_resource.id  # 親リソースを設定
+      }
+      verify-token = {
+        filename = "../api/auth/verify-token/verify-token.zip"
+        handler  = "verify-token.handler"
+        env_vars = {
+        }
+        http_method = "GET"
+        parent_id   = aws_api_gateway_resource.auth_resource.id  # 親リソースを設定
+      }
+      refresh-token = {
+        filename = "../api/auth/refresh-token/refresh-token.zip"
+        handler  = "refresh-token.handler"
+        env_vars = {
         }
         http_method = "POST"
         parent_id   = aws_api_gateway_resource.auth_resource.id  # 親リソースを設定
@@ -696,8 +718,37 @@ locals {
         parent_id   = aws_api_gateway_resource.nutritionists_resource.id  # 親リソースを設定
       }
     }
-    # チャット部分は外出し
+    # チャット部分は(一部)外出し
     # チャット時の通信がwebsocketを使うため、通常の処理と異なる
+    chat = {
+      createChat = {
+        filename = "../api/chat/createChat/createChat.zip"
+        handler  = "createChat.handler"
+        env_vars = {
+          COGNITO_USER_POOL_ID = aws_cognito_user_pool.tamotsu_user_pool.id,
+        }
+        http_method = "PUT"
+        parent_id   = aws_api_gateway_resource.chat_resource.id  # 親リソースを設定
+      }
+      listJoinChat = {
+        filename = "../api/chat/listJoinChat/listJoinChat.zip"
+        handler  = "listJoinChat.handler"
+        env_vars = {
+        }
+        http_method = "GET"
+        parent_id   = aws_api_gateway_resource.chat_resource.id  # 親リソースを設定
+      }
+      sendImage = {
+        filename = "../api/chat/sendImage/sendImage.zip"
+        handler  = "sendImage.handler"
+        env_vars = {
+          S3_BUCKET_NAME = aws_s3_bucket.tamotsu_images.id,
+          MY_WS_DOMAIN   = var.my_ws_domain
+        }
+        http_method = "POST"
+        parent_id   = aws_api_gateway_resource.chat_resource.id  # 親リソースを設定
+      }
+    }
   }
 }
 
@@ -922,6 +973,26 @@ resource "aws_lambda_layer_version" "mysql2-layer" {
   source_code_hash = filebase64sha256("../api/layers/mysql2-layer/mysql2-layer.zip")
 }
 
+resource "aws_lambda_layer_version" "auth-layer" {
+  filename   = "../api/layers/auth-layer/auth-layer.zip"
+  layer_name = "auth-layer-layer"
+
+  compatible_runtimes = ["nodejs14.x", "nodejs16.x", "nodejs18.x", "nodejs20.x"]
+
+  # レイヤーが更新されたときに新しいバージョンを作成
+  source_code_hash = filebase64sha256("../api/layers/auth-layer/auth-layer.zip")
+}
+
+resource "aws_lambda_layer_version" "chat-layer" {
+  filename   = "../api/layers/chat-layer/chat-layer.zip"
+  layer_name = "chat-layer-layer"
+
+  compatible_runtimes = ["nodejs14.x", "nodejs16.x", "nodejs18.x", "nodejs20.x"]
+
+  # レイヤーが更新されたときに新しいバージョンを作成
+  source_code_hash = filebase64sha256("../api/layers/chat-layer/chat-layer.zip")
+}
+
 # Lambdaレイヤーの取得
 data "aws_lambda_layer_version" "aws_sdk_layer" {
   layer_name          = "aws-sdk-layer"
@@ -952,13 +1023,17 @@ module "lambda_functions" {
       DB_USER = var.db_user,
       DB_PASSWORD = var.db_password,
       DB_NAME = var.db_name,
-      MY_REGION = var.region
+      MY_REGION = var.region,
+      COGNITO_USER_POOL_CLIENT_ID = aws_cognito_user_pool_client.client.id,
+      MY_WS_DOMAIN = var.my_ws_domain
     }
   )
   layer_arns = [
     data.aws_lambda_layer_version.aws_sdk_layer.arn,
     aws_lambda_layer_version.response-utils-layer.arn,
-    aws_lambda_layer_version.mysql2-layer.arn
+    aws_lambda_layer_version.mysql2-layer.arn,
+    aws_lambda_layer_version.auth-layer.arn,
+    aws_lambda_layer_version.chat-layer.arn
   ]
 }
 
@@ -1094,7 +1169,7 @@ resource "aws_route_table_association" "private_route_assoc2" {
 # =============================================================
 # 証明書の作成
 resource "aws_acm_certificate" "ws_tamotsu" {
-  domain_name       = "ws.${var.my_domain}"
+  domain_name       = var.my_ws_domain
   validation_method = "DNS"
 }
 
@@ -1104,7 +1179,7 @@ resource "aws_acm_certificate_validation" "ws_tamotsu" {
 
 # apiサブドメイン
 resource "aws_api_gateway_domain_name" "ws_tamotsu_app" {
-  domain_name       = "ws.${var.my_domain}"  # サブドメイン
+  domain_name       = var.my_ws_domain  # サブドメイン
   regional_certificate_arn = aws_acm_certificate_validation.ws_tamotsu.certificate_arn
   endpoint_configuration {
     types = ["REGIONAL"]
@@ -1115,7 +1190,7 @@ resource "aws_api_gateway_domain_name" "ws_tamotsu_app" {
 # Route 53にAレコードを追加
 resource "aws_route53_record" "record_tamotsu_ws" {
   zone_id = data.aws_route53_zone.tamotsu_app.zone_id
-  name    = "ws.${var.my_domain}"
+  name    = var.my_ws_domain
   type    = "A"
 
   alias {
@@ -1192,19 +1267,28 @@ resource "aws_lambda_function" "connect_function" {
   handler          = "connect.handler"
   runtime          = "nodejs20.x"
   role             = aws_iam_role.lambda_role.arn
+  timeout          = 30
+  source_code_hash = filebase64sha256("../api/chat/connect/connect.zip")
+  vpc_config {
+    subnet_ids         = [aws_subnet.private_subnet_1.id, aws_subnet.private_subnet_2.id]
+    security_group_ids = [aws_security_group.lambda_sg.id]
+  }
   environment {
     variables = {
       DB_HOST     = replace(aws_db_instance.tamotsu_db.endpoint, ":3306", ""),
       DB_USER     = var.db_user,
       DB_PASSWORD = var.db_password,
       DB_NAME     = var.db_name,
-      MY_REGION   = var.region
+      MY_REGION   = var.region,
+      MY_WS_DOMAIN = var.my_ws_domain,
     }
   }
   layers = [
     data.aws_lambda_layer_version.aws_sdk_layer.arn,
     aws_lambda_layer_version.response-utils-layer.arn,
-    aws_lambda_layer_version.mysql2-layer.arn
+    aws_lambda_layer_version.mysql2-layer.arn,
+    aws_lambda_layer_version.auth-layer.arn,
+    aws_lambda_layer_version.chat-layer.arn
   ]
 }
 
@@ -1214,19 +1298,28 @@ resource "aws_lambda_function" "message_function" {
   handler          = "message.handler"
   runtime          = "nodejs20.x"
   role             = aws_iam_role.lambda_role.arn
+  timeout          = 30
+  source_code_hash = filebase64sha256("../api/chat/message/message.zip")
+  vpc_config {
+    subnet_ids         = [aws_subnet.private_subnet_1.id, aws_subnet.private_subnet_2.id]
+    security_group_ids = [aws_security_group.lambda_sg.id]
+  }
   environment {
     variables = {
       DB_HOST     = replace(aws_db_instance.tamotsu_db.endpoint, ":3306", ""),
       DB_USER     = var.db_user,
       DB_PASSWORD = var.db_password,
       DB_NAME     = var.db_name,
-      MY_REGION   = var.region
+      MY_REGION   = var.region,
+      MY_WS_DOMAIN = var.my_ws_domain,
     }
   }
   layers = [
     data.aws_lambda_layer_version.aws_sdk_layer.arn,
     aws_lambda_layer_version.response-utils-layer.arn,
-    aws_lambda_layer_version.mysql2-layer.arn
+    aws_lambda_layer_version.mysql2-layer.arn,
+    aws_lambda_layer_version.auth-layer.arn,
+    aws_lambda_layer_version.chat-layer.arn
   ]
 }
 
@@ -1236,19 +1329,28 @@ resource "aws_lambda_function" "disconnect_function" {
   handler          = "disconnect.handler"
   runtime          = "nodejs20.x"
   role             = aws_iam_role.lambda_role.arn
+  timeout          = 30
+  source_code_hash = filebase64sha256("../api/chat/disconnect/disconnect.zip")
+  vpc_config {
+    subnet_ids         = [aws_subnet.private_subnet_1.id, aws_subnet.private_subnet_2.id]
+    security_group_ids = [aws_security_group.lambda_sg.id]
+  }
   environment {
     variables = {
       DB_HOST     = replace(aws_db_instance.tamotsu_db.endpoint, ":3306", ""),
       DB_USER     = var.db_user,
       DB_PASSWORD = var.db_password,
       DB_NAME     = var.db_name,
-      MY_REGION   = var.region
+      MY_REGION   = var.region,
+      MY_WS_DOMAIN = var.my_ws_domain,
     }
   }
   layers = [
     data.aws_lambda_layer_version.aws_sdk_layer.arn,
     aws_lambda_layer_version.response-utils-layer.arn,
-    aws_lambda_layer_version.mysql2-layer.arn
+    aws_lambda_layer_version.mysql2-layer.arn,
+    aws_lambda_layer_version.auth-layer.arn,
+    aws_lambda_layer_version.chat-layer.arn
   ]
 }
 

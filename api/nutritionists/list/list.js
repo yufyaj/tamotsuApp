@@ -1,25 +1,25 @@
-const { CognitoIdentityProviderClient, GetUserCommand } = require("@aws-sdk/client-cognito-identity-provider");
 const mysql = require('mysql2/promise');
 const { successResponse, errorResponse } = require('response-utils');
-
-const cognitoClient = new CognitoIdentityProviderClient({ region: process.env.MY_REGION });
+const { verifyAccessToken } = require('token-handler');
 
 exports.handler = async (event) => {
     if (event.httpMethod !== 'GET') {
         return errorResponse('Method Not Allowed', 405);
     }
 
-    const token = event.headers.Authorization?.split(' ')[1];
-    if (!token) {
-        return errorResponse('Authorization token is missing', 401);
+    console.log("debug_log_0: start");
+
+    const token = event.headers.Authorization.split(' ')[1];
+    const { result } = await verifyAccessToken(token);
+    console.log("debug_log_A: ", result);
+    if (!result) {
+        return errorResponse('トークン検証に失敗しました', 401);
     }
+    console.log("debug_log_1: verified token");
 
     let connection;
 
     try {
-        // トークンの有効性を確認
-        await cognitoClient.send(new GetUserCommand({ AccessToken: token }));
-
         // クエリパラメータの取得
         const { search, page = 1, perPage = 10 } = event.queryStringParameters || {};
 
