@@ -54,7 +54,7 @@ async function handleGetRequest(event) {
 
         const userRow = userRows[0];
         const profileImageUrl = userRow.profile_image_url;
-        const key = profileImageUrl.split(`https://${process.env.S3_BUCKET_NAME}.s3.amazonaws.com/`)[1];
+        const key = profileImageUrl != null ? profileImageUrl.split(`https://${process.env.S3_BUCKET_NAME}.s3.amazonaws.com/`)[1] : null;
         if (profileImageUrl) {
             const response = {
                 name: userRow.name,

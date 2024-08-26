@@ -18,7 +18,7 @@ abstract class _$AppRouter extends RootStackRouter {
     ChatRoute.name: (routeData) {
       return AutoRoutePage<dynamic>(
         routeData: routeData,
-        child: ChatScreen(),
+        child: const ChatScreen(),
       );
     },
     HomeRoute.name: (routeData) {
@@ -79,12 +79,24 @@ abstract class _$AppRouter extends RootStackRouter {
         ),
       );
     },
+    NutritionistHomeRoute.name: (routeData) {
+      return AutoRoutePage<dynamic>(
+        routeData: routeData,
+        child: NutritionistHomeScreen(),
+      );
+    },
     NutritionistListRoute.name: (routeData) {
       final args = routeData.argsAs<NutritionistListRouteArgs>(
           orElse: () => const NutritionistListRouteArgs());
       return AutoRoutePage<dynamic>(
         routeData: routeData,
         child: NutritionistListScreen(key: args.key),
+      );
+    },
+    NutritionistProfileEditRoute.name: (routeData) {
+      return AutoRoutePage<dynamic>(
+        routeData: routeData,
+        child: const NutritionistProfileEditScreen(),
       );
     },
     RegisterRoute.name: (routeData) {
@@ -304,6 +316,20 @@ class NutritionistDetailRouteArgs {
 }
 
 /// generated route for
+/// [NutritionistHomeScreen]
+class NutritionistHomeRoute extends PageRouteInfo<void> {
+  const NutritionistHomeRoute({List<PageRouteInfo>? children})
+      : super(
+          NutritionistHomeRoute.name,
+          initialChildren: children,
+        );
+
+  static const String name = 'NutritionistHomeRoute';
+
+  static const PageInfo<void> page = PageInfo<void>(name);
+}
+
+/// generated route for
 /// [NutritionistListScreen]
 class NutritionistListRoute extends PageRouteInfo<NutritionistListRouteArgs> {
   NutritionistListRoute({
@@ -330,6 +356,20 @@ class NutritionistListRouteArgs {
   String toString() {
     return 'NutritionistListRouteArgs{key: $key}';
   }
+}
+
+/// generated route for
+/// [NutritionistProfileEditScreen]
+class NutritionistProfileEditRoute extends PageRouteInfo<void> {
+  const NutritionistProfileEditRoute({List<PageRouteInfo>? children})
+      : super(
+          NutritionistProfileEditRoute.name,
+          initialChildren: children,
+        );
+
+  static const String name = 'NutritionistProfileEditRoute';
+
+  static const PageInfo<void> page = PageInfo<void>(name);
 }
 
 /// generated route for

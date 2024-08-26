@@ -12,6 +12,8 @@ import 'package:tamotsu/views/screens/register/nutritionist_detail_screen.dart';
 import 'package:tamotsu/views/screens/user/user_home_screen.dart';
 import 'package:tamotsu/views/screens/chat/chat_screen.dart';
 import 'package:tamotsu/views/screens/user/user_profile_edit_screen.dart';
+import 'package:tamotsu/views/screens/nutritionist/nutritionist_home_screen.dart';
+import 'package:tamotsu/views/screens/nutritionist/nutritionist_profile_edit_screen.dart';
 // 他の画面もここにインポートしてください
 
 part 'app_router.gr.dart';
@@ -32,6 +34,8 @@ class AppRouter extends _$AppRouter {
     AutoRoute(page: NutritionistListRoute.page),
     AutoRoute(page: UserHomeRoute.page),
     AutoRoute(page: ChatRoute.page),
-    AutoRoute(page: UserProfileEditRoute.page)
+    AutoRoute(page: UserProfileEditRoute.page),
+    AutoRoute(page: NutritionistHomeRoute.page),
+    AutoRoute(page: NutritionistProfileEditRoute.page)
   ];
 }

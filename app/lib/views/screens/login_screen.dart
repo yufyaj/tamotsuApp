@@ -30,7 +30,7 @@ class _LoginScreenState extends State<LoginScreen> {
             context.router.push(const UserHomeRoute());
 
           } else if(userType == 'nutritionist') {
-            context.router.push(const HomeRoute());
+            context.router.push(const NutritionistHomeRoute());
           } else {
             throw Exception('ログインに失敗しました');
           }
